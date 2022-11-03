@@ -112,5 +112,7 @@ echo "gurobi download and compilation finished"
 
 cd ${DATA}
 $bcftools view -r 22:16050075-16654125 -Oz data/chr22.vcf.gz > data/chr22_10k.vcf.gz
+$bcftools index data/chr22_10k.vcf.gz
+
 cd ${project_dir}
 echo "Looks like it went okay, now run  chmod +x ./scripts/construct_graph.sh && ./scripts/construct_graph.sh ${chr_id} ${alpha}"
