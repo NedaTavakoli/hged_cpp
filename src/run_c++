@@ -7,6 +7,8 @@ cd build
 new c++:
 ./ilp_snp_indels  -a 10 -d 3 -chr 22 -vcf ../data/chr22.vcf.gz  -fa ../data/hs37d5.fa 
 ./ilp_snp_indels  -a 10 -d 3 -chr 22 -vcf ../data/chr22_10k.vcf.gz  -fa ../data/hs37d5.fa 
+./extract_variants  -a 10 -d 3 -chr 22 -vcf ../data/chr22_10k.vcf.gz  -fa ../data/hs37d5.fa 
+
 
 
 $bcftools query -i '(TYPE="snp" || TYPE="indel") && GT="alt"' -f '%POS\t%REF\t%ALT[\t%GT]\n'  chr22.vcf.gz > pos_ref_alt_GT_chr22.txt

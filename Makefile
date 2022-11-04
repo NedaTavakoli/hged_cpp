@@ -8,6 +8,7 @@ all:
 	mkdir -p build
 	$(CXX) $(CPPFLAGS) -D BCFTOOLSPATH=$(BCFTOOLS_INSTALL) -D SAMTOOLSPATH=$(SAMTOOLS_INSTALL) -m64 -o $(TARGET_DIR)/ilp_snp_indels -I $(GUROBI_INSTALL)/include/ -I src/ext -L  $(GUROBI_INSTALL)/lib/ src/ilp_snp_indels.cpp -lgurobi_c++ $(GUROBI_INSTALL)/lib/libgurobi91.so -lm -lz -lpthread
 	$(CXX) $(CPPFLAGS) -D BCFTOOLSPATH=$(BCFTOOLS_INSTALL) -D SAMTOOLSPATH=$(SAMTOOLS_INSTALL) -m64 -o $(TARGET_DIR)/reachable_subgraph -I $(GUROBI_INSTALL)/include/ -lfmt  -L  $(GUROBI_INSTALL)/lib/ src/reachable_subgraph.cpp -lgurobi_c++ $(GUROBI_INSTALL)/lib/libgurobi91.so -lm -lz -lpthread
+	$(CXX) $(CPPFLAGS) -D BCFTOOLSPATH=$(BCFTOOLS_INSTALL) -D SAMTOOLSPATH=$(SAMTOOLS_INSTALL) -m64 -o $(TARGET_DIR)/extract_variants -I $(GUROBI_INSTALL)/include/ -I src/ext -L  $(GUROBI_INSTALL)/lib/ src/extract_variants.cpp -lgurobi_c++ $(GUROBI_INSTALL)/lib/libgurobi91.so -lm -lz -lpthread
 
 	@echo "check executables in build directory"
 
