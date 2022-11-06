@@ -1,3 +1,5 @@
+brew install fmt
+brew install boost
 cd ..
 make
 cd build
