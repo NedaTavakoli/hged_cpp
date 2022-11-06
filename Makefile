@@ -2,7 +2,7 @@ GUROBI_INSTALL=$(shell pwd)/build/gurobi910/linux64
 BCFTOOLS_INSTALL=$(shell pwd)/build/bcftools-1.9/bcftools
 SAMTOOLS_INSTALL=$(shell pwd)/build/samtools-1.12/samtools
 TARGET_DIR=$(shell pwd)/build
-CPPFLAGS= -g -std=c++11 -DNDEBUG -O3 
+CPPFLAGS= -g -std=c++20 -DNDEBUG -O3 
 
 all:
 	mkdir -p build
