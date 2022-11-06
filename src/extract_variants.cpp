@@ -118,7 +118,15 @@ void get_linear_backbone(const std::string &fasta_file, const int &chr, int &sta
     backbone_seq= content;  
  }
 
-  void obtain_substrings(std::string &backbone_seq, int &start_pos, const int $alpha, tuple_list &tl){
+  void obtain_substrings(std::string &backbone_seq, int &start_pos, const int &alpha, tuple_list &tl ){
+
+
+    // seed random generator by time in seconds (this may create issue if two instances are launched at the same time)
+    srand(time(0)); int random = rand() % 100000;  
+    std::string pos_sub = ".pos_sub_alpha_" +std::to_string(alpha) + "_" + std::to_string(random) + ".txt";
+    std::cout << "INFO, hged::obtain_substring, extracting substrings per position and save to the file named: "  << pos_sub << std::endl;
+
+    std::ofstream pos_sub_file (pos_sub);
     
     std::unordered_map<int, std::set<std::string>> pos_substrings;
     
@@ -148,7 +156,7 @@ void get_linear_backbone(const std::string &fasta_file, const int &chr, int &sta
           std::string alt_choice;
         
 
-          while (current_pos < final_pos && s.size() < $alpha){
+          while (current_pos < final_pos && s.size() < alpha){
             if (tl.find(current_pos) != tl.end())  { // the position exists in the unordered map
                 sample_found_at_pos = false;
                 std::string sam = boost::get<2> (i.second.at(j));
@@ -182,13 +190,84 @@ void get_linear_backbone(const std::string &fasta_file, const int &chr, int &sta
 
           }
             pos_substrings[i.first].insert(s);
+            
         }
        // pos_substrings[i.first].insert(s);
+      
     }
-       
+        pos_sub_file << std::to_string(i.first) + " " << pos_substrings[i.first] << std::endl;
         std::cout << "POS_substring for POS " << i.first << " set of substring" << pos_substrings[i.first] <<std::endl;
     }
    
+  }
+
+  void construct_graph (std::string &backbone_seq, int &start_pos, int &last_pos, tuple_list &tl){
+    
+    // seed random generator by time in seconds (this may create issue if two instances are launched at the same time)
+    srand(time(0)); int random = rand() % 100000;  
+    std::string graph_file = ".construct_graph_" + std::to_string(random) + ".txt";
+    std::cout << "INFO, hged::construct graph, constructing graph file: "  << graph_file << std::endl;
+
+    std::ofstream graph_file_name (graph_file);
+    
+
+    for (int i = 0 ; i < backbone_seq.size() ; ++i){
+
+      // add backbone edges
+      graph_file_name << std::to_string(start_pos + i) + " " + std::to_string(start_pos + i+ 1) + " " +backbone_seq[i] \
+      + " " + "-" << std::endl;
+    }
+
+    // add alt paths
+     int start, end, new_vertex;
+     new_vertex = last_pos + 2;
+     int index = 0 ;
+
+     for (const auto& i: tl) {
+      std::cout << "POS: " << i.first << std::endl;
+      for (std::vector<value_elemet>::size_type j =0 ; j < i.second.size() ; ++j){
+        // std::cout << "POS: " << i.first << std::endl;
+        // std::cout << "REF: " << boost::get<0> (i.second.at(j))  << std::endl;
+        // std::cout << "ALT: " <<  boost::get<1> (i.second.at(j))  << std::endl;
+        // std::cout << "SAMPLE: " << boost::get<2> (i.second.at(j))  << std::endl;
+        // std::cout << "GT: " << boost::get<3> (i.second.at(j))  << std::endl;
+
+        std::string alt = boost::get<1> (i.second.at(j));
+        std::string ref = boost::get<0> (i.second.at(j));
+        std::vector<std::string> alt_splited;
+        std::vector<std::string>::iterator it;
+        boost::split(alt_splited, alt, boost::is_any_of(",")); //split ALT over comma, save to a vector
+        for (size_t k = 0; k < alt_splited.size() ; ++k ){ // for each element in alt
+          if (k == 0){
+             start = i.first;
+          }else{
+            start = new_vertex;
+          }   
+          
+          if (k == (alt_splited[k].size()-1) ){
+             end = i.first + ref.size();
+
+          }else{
+            new_vertex += 1;
+            end = new_vertex;
+
+          }
+
+          // TODO : remove duplicates
+          graph_file_name << std::to_string(start) + " "  + std::to_string(end) + " " + alt_splited[k] + " " + std::to_string(i.first) << std::endl;
+          //graph_file_name << std::to_string(start) + " "  + std::to_string(end) + " " + alt_splited[k] + " " + std::to_string(index) << std::endl;
+
+        }
+        
+    }
+      index +=1;
+      
+
+    }
+
+    // remove duplicate lines
+
+
   }
 
 
@@ -200,6 +279,7 @@ int main(int argc, char **argv) {
   parseandSave_ILP(argc, argv, parameters);
 
   tuple_list tl;
+  std::ofstream pos_sub_file, graph_file_name;
   int start_pos, last_pos, pos, index;
   std::vector<std::string>  samples;
   std::unordered_map<int, std::string> Sample_GT;
@@ -211,6 +291,7 @@ int main(int argc, char **argv) {
    last_pos, variant_positions, tl);
   get_linear_backbone (parameters.fasta_ref_file, parameters.chr, start_pos, last_pos, backbone_seq);
   obtain_substrings (backbone_seq, start_pos, parameters.alpha, tl);
+  construct_graph (backbone_seq, start_pos, last_pos, tl);
 
 
   return 0;
