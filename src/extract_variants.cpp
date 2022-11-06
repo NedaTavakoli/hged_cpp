@@ -16,10 +16,17 @@
 #include "ext/subprocess.hpp"
 #include <boost/tokenizer.hpp>
 #include "boost/tuple/tuple.hpp"  // to use tuple, https://stackoverflow.com/questions/6482338/how-to-create-a-list-of-tuples-c
+#include <boost/algorithm/string.hpp>
+#include <boost/algorithm/string/split.hpp>
+#include <set>
 
 using boost::tuple;
 
-typedef std::unordered_map<int, std::vector<boost::tuple<std::string, std::string, std::string, std::string>>> tuple_list; 
+//typedef std::unordered_map<int, std::vector<boost::tuple<std::string, std::string, std::string, std::string>>> tuple_list; 
+using value_elemet = boost::tuple<std::string, std::string, std::string, std::string>;
+using Value_type = std::vector<value_elemet>;
+typedef std::unordered_map<int, Value_type> tuple_list; 
+
 //typedef std::vector<boost::tuple<int, std::string, std::string, std::string, std::string>> tuple_list; // this vector is used for POS, REF, ALT, SAMPLE=GT
 
 /**
@@ -59,7 +66,8 @@ void  extract_vcf_pos_ref_alt_sample_gt (const std::string &vcf_file, const std:
         while (iss >> sample >> gt)
         {
           //tl.push_back({pos, REF, ALT, sample, gt});
-          tl[pos].push_back({ REF, ALT, sample, gt}); 
+          //tl[pos].push_back({ REF, ALT, sample, gt});
+          tl[pos].push_back(boost::make_tuple(REF, ALT, sample, gt)); 
         }
       }
     }
@@ -70,13 +78,16 @@ void  extract_vcf_pos_ref_alt_sample_gt (const std::string &vcf_file, const std:
     last_pos  = variant_positions.back();
     std::cout <<  "INFO, hged::main, last position: " << last_pos << std::endl;
 
-    for (tuple_list::const_iterator i = tl.begin(); i != tl.end(); ++i) {
-        std::cout << "Pos: " << i->get<0>() << std::endl;
-        std::cout << "REF: " << i->get<1>() << std::endl;
-        std::cout << "ALT: " << i->get<2>() << std::endl;
-        std::cout << "SAMPLE: " << i->get<3>() << std::endl;
-        std::cout << "GT: " << i->get<4>() << std::endl;
-    }
+    // for (const auto& i: tl) {
+    //   std::cout << "POS: " << i.first << std::endl;
+    //   for (std::vector<value_elemet>::size_type j =0 ; j < i.second.size() ; ++j){
+    //     std::cout << "POS: " << i.first << std::endl;
+    //     std::cout << "REF: " << boost::get<0> (i.second.at(j))  << std::endl;
+    //     std::cout << "ALT: " <<  boost::get<1> (i.second.at(j))  << std::endl;
+    //     std::cout << "SAMPLE: " << boost::get<2> (i.second.at(j))  << std::endl;
+    //     std::cout << "GT: " << boost::get<3> (i.second.at(j))  << std::endl;
+    // }
+    // }
 
 }
 
@@ -108,7 +119,76 @@ void get_linear_backbone(const std::string &fasta_file, const int &chr, int &sta
  }
 
   void obtain_substrings(std::string &backbone_seq, int &start_pos, const int $alpha, tuple_list &tl){
+    
+    std::unordered_map<int, std::set<std::string>> pos_substrings;
+    
+    int final_pos = start_pos + backbone_seq.size();
+    std::cout << "final pos: " << final_pos << std::endl;
+    std::string sample;
+    std::string s;
 
+    for (const auto& i: tl) {
+      std::cout << "POS: " << i.first << std::endl;
+      for (std::vector<value_elemet>::size_type j =0 ; j < i.second.size() ; ++j){
+        // std::cout << "POS: " << i.first << std::endl;
+        // std::cout << "REF: " << boost::get<0> (i.second.at(j))  << std::endl;
+        // std::cout << "ALT: " <<  boost::get<1> (i.second.at(j))  << std::endl;
+        // std::cout << "SAMPLE: " << boost::get<2> (i.second.at(j))  << std::endl;
+        // std::cout << "GT: " << boost::get<3> (i.second.at(j))  << std::endl;
+
+        sample = boost::get<2> (i.second.at(j));
+
+        std::string alt = boost::get<3> (i.second.at(j));
+        if( (alt.compare(0, 1, "0") != 0) || (alt.compare(2, 1, "0") != 0) ){
+
+        
+          int current_pos = i.first ;
+          std::string s = " ";
+          bool sample_found_at_pos;
+          std::string alt_choice;
+        
+
+          while (current_pos < final_pos && s.size() < $alpha){
+            if (tl.find(current_pos) != tl.end())  { // the position exists in the unordered map
+                sample_found_at_pos = false;
+                std::string sam = boost::get<2> (i.second.at(j));
+                if (sam.compare(sample) == 0) {
+                  std::string gt = boost::get<3> (i.second.at(j));
+                  if (gt.compare(0,1,"0") != 0) 
+                    alt_choice = gt.substr(0,1);
+                  if (gt.compare(2,1,"0") != 0) 
+                    alt_choice = gt.substr(2,1); 
+                   if (alt_choice.compare("0") !=0){
+                    std::vector<std::string> alt_splited;
+                    std::vector<std::string>::iterator it;
+                    boost::split(alt_splited, boost::get<1> (i.second.at(j)), boost::is_any_of(",")); //split ALT over comma, save to a vector
+                    s += alt_splited[atoi(alt_choice.c_str())-1];
+                    current_pos +=  (boost::get<0> (i.second.at(j))).size(); // add reference length
+                    sample_found_at_pos = true;
+                   }  
+                 }
+
+                if (sample_found_at_pos == false){
+                  s += backbone_seq.substr(current_pos-start_pos, 1);
+                  current_pos +=1;
+               }
+            }
+            else{
+              s += backbone_seq.substr(current_pos-start_pos, 1);
+              current_pos +=1;
+           }
+
+           // pos_substrings[i.first].insert(s);
+
+          }
+            pos_substrings[i.first].insert(s);
+        }
+       // pos_substrings[i.first].insert(s);
+    }
+       
+        std::cout << "POS_substring for POS " << i.first << " set of substring" << pos_substrings[i.first] <<std::endl;
+    }
+   
   }
 
 
