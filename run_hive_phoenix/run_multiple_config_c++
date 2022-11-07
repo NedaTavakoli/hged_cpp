@@ -1,0 +1,6 @@
+
+
+
+/usr/bin/time -v build/ilp_snp_indels -a 150 -d 2 -chr 22 -vcf data/chr22_snps_indels.vcf.gz -fa data/hs37d5.fa -pos data/variant_positions_snps_indels_chr22.txt
+
+/usr/bin/time build/ilp_snp_indels -a 150 -d 2 -chr 22 -vcf data/chr22_snps_indels.vcf.gz -fa data/hs37d5.fa -pos data/variant_positions_snps_indels_chr22.txt

@@ -1,0 +1,72 @@
+ssh ntavakoli6@compbio.cc.gatech.edu
+
+Interactive jobs are submitted as
+srun -n 2 --cpus-per-task=2 -p shared -t 72:00:00 --pty bash
+
+
+
+
+
+
+
+Welcome to compbio
+
+OVERVIEW
+-----------------------------------------------------------------------------------------------
+This system is used for testing and benchmark of the following:
+	MPI applications (up to 72 processes)
+	OpenMP applications (up to 72 cores)
+	large memory applications (up to 1TB memory)
+This system is NOT meant to be used for production or education.
+
+This system consists of a front end virtual machine, compbio, and a 1 TB, 72 core compute node.
+The front end is for light compilation, file management, and job scheduling only.
+To use the backend, please use the slurm job scheduler.
+
+
+JOB SUBMISSION
+-----------------------------------------------------------------------------------------------
+Two queues are provided, shared and exclusive.
+
+		| max time	| default time	|
+Shared		| 72 hours	| 1 hour	|
+Exclusive	| 24 hours	| 1 hour	|
+
+Interactive jobs are submitted as
+	srun -n {num_tasks} --cpus-per-task={# threads} -p {queue} -t {time} --pty bash
+
+Immediate mode jobs are submitted as
+	srun -n {num_tasks} --cpus-per-task={# threads} -p {queue} -t {time} {executable}
+
+Batch mode jobs are submitted as
+	sbatch -n {num_tasks} --cpus-per-task={# threads} -p {queue} -t {time} {script}
+
+To see currently queued jobs, use
+	squeue
+
+To cancel a job, use
+	scancel {job_id}
+
+
+STORAGE
+-----------------------------------------------------------------------------------------------
+The backend contains the following temporary/scratch space
+/tmp: 		mirrored SATA3 SSD. ~ 200GB
+/localscratch:  RAID 10 HD, ~ 8TB
+/localscratch2:	RAID 10 HD, ~ 12TB
+/nvmescratch:	PCIe SSD ~ 480GB
+
+The following network directories are also mounted
+/nethome/{user}	home directory, backed up, ~50GB
+/project	project storage, migrated from old compbio.
+/oldhome	home directory content migrated from old compbio
+/oldscratch     scratch directory from old compbio 
+
+
+SOFTWARE AND SUPPORT
+-----------------------------------------------------------------------------------------------
+Currently, 'module' has not been set up.  For software installations, please contact
+	Tony Pan
+	Sriram Chockalingam
+
+For hardware issues or urgent problems, please contact TSO helpdesk
