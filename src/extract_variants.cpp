@@ -233,13 +233,14 @@ void get_linear_backbone(const std::string &fasta_file, const int &chr, int &sta
         // std::cout << "GT: " << boost::get<3> (i.second.at(j))  << std::endl;
 
         std::string alt = boost::get<1> (i.second.at(j));
+        std::cout << "POS " << i.first << " ALT " << alt << std::endl;
         std::string ref = boost::get<0> (i.second.at(j));
         std::vector<std::string> alt_splited;
         std::vector<std::string>::iterator it;
         boost::split(alt_splited, alt, boost::is_any_of(",")); //split ALT over comma, save to a vector
         for (size_t k = 0; k < alt_splited.size() ; ++k ){ // for each element in alt
           if (k == 0){
-             start = i.first;
+            start = i.first;
           }else{
             start = new_vertex;
           }   
