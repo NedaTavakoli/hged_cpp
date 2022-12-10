@@ -215,6 +215,58 @@ void get_induced_variation_graph(igraph_t* graph, igraph_vector_int_t* vertex_se
 }
 
 
+void reverse_weighted_reachable(igraph_t* graph, igraph_integer_t start_vid, igraph_vector_int_t* result, int delta){
+    
+    // topologically sort the vertices of the reversed graph
+    igraph_vector_int_t sorted_vertex;
+    igraph_vector_int_init(&sorted_vertex, igraph_vcount(graph));
+    igraph_topological_sorting(graph, &sorted_vertex, IGRAPH_IN);
+    int n = igraph_vector_int_size(&sorted_vertex);
+
+    // get start index
+    int start_idx = -1;
+
+    for(int i = 0; i < n; i++){
+        //cout << igraph_vector_int_get(&sorted_vertex, i) << ", ";
+        if(start_vid == igraph_vector_int_get(&sorted_vertex, i)){
+            start_idx = i;
+            break;
+        }
+    }
+
+    vector<int> distance(n, INT_MAX-1);
+    distance[igraph_vector_int_get(&sorted_vertex, start_idx)] = 0;
+
+    igraph_vector_int_t incident_edges;
+    igraph_vector_int_init(&incident_edges, 0);
+
+    for(int i = start_idx; i < n; i++){
+        igraph_integer_t vid = igraph_vector_int_get(&sorted_vertex, i);
+        // update neightbors
+        igraph_incident(graph, &incident_edges, vid, IGRAPH_IN);
+        int m = igraph_vector_int_size(&incident_edges);
+        //cout << "vid = " << vid  << endl;
+        for(int i = 0; i < m; i++){
+
+            igraph_integer_t start, end;
+            igraph_edge(graph, igraph_vector_int_get(&incident_edges, i), &start, &end);
+            int weight = igraph_cattribute_EAN(graph, "weight", igraph_vector_int_get(&incident_edges, i));
+            //cout << "start = " << start << " end = " << end << " weight = " << weight << endl;
+
+            if(distance[start] > distance[end] + weight){
+                distance[start] = distance[end] + weight;
+            }
+        }
+    }
+
+    for(int i = 0; i < n; i++){
+        if(distance[i] < delta){
+            igraph_vector_int_push_back(result, i);
+        }
+    }
+
+}
+
 
 /*
 The main idea is that we consider the vertices of the alignment graph as laided out in |P||V| grid.
@@ -250,7 +302,7 @@ void create_pruned_alignment_graph(igraph_t* graph, string pattern, int delta, i
         int dist;
     }vertex;
 
-    //  hash to track seen coordinates
+    //  hash to track seen coordinates, distances are stored here, not in queue
     unordered_map<int, vertex> seen_coordinates;
 
     igraph_vector_int_t alignment_graph_edges; // start, end,   start, end, 
@@ -274,45 +326,48 @@ void create_pruned_alignment_graph(igraph_t* graph, string pattern, int delta, i
         igraph_integer_t old_uid = igraph_vector_int_get(&sorted_vertex, u.x);
         
 
-        int u_coord = u.y * n + inv_sorted_vertex[u.id];
+        int u_coord = u.y * n + u.x;
         vertex u_ = seen_coordinates[u_coord];
         int u_dist = u_.dist;
+
+        //cout << u.x << ", " << u.y << ": " << u_dist << endl;
 
         // vertices on same level (insertion)
         if(u_dist + 1 <= delta){
 
             igraph_incident(graph, &incident_edges, old_uid, IGRAPH_OUT);
             int m = igraph_vector_int_size(&incident_edges);
-
+            //cout << "m = " << m << endl;
             for(int i = 0; i < m; i++){
 
                 igraph_integer_t start, end;
                 igraph_edge(graph, igraph_vector_int_get(&incident_edges, i), &start, &end);
 
-                int x = inv_sorted_vertex[end];
-                int y = u.y;
-                int v_coordinate = y*n + x;
+                int v_x = inv_sorted_vertex[end];
+                int v_y = u.y;
+                int v_coordinate = v_y * n + v_x;
                 int vid;
 
                 if(seen_coordinates.find(v_coordinate) == seen_coordinates.end()){
-                    // never encounter coordinate within reachable distance
+                    // never encounter coordinate
                     // add vertex with new vertex id and edge
 
                     vid = new_vid;
-                    seen_coordinates[v_coordinate] = {vid, x, y, u_dist + 1};
+                    seen_coordinates[v_coordinate] = {vid, v_x, v_y, u_dist + 1};
                     new_vid++;
                     
                     
                     // enque vertex
-                    q.push({vid, x, y, -1});
+                    q.push({vid, v_x, v_y, -1});
 
                 }else{
                     // coordinate seen before 
                     vertex v = seen_coordinates[v_coordinate];
                     vid = v.id;
 
+                    // update distance if needed
                     if(u_dist + 1 < v.dist){
-                        seen_coordinates[v_coordinate] = {vid, x, y, u_dist + 1};
+                        seen_coordinates[v_coordinate] = {vid, v_x, v_y, u_dist + 1};
                     }
                 }
                 igraph_vector_int_push_back(&alignment_graph_edges, u.id);
@@ -323,9 +378,167 @@ void create_pruned_alignment_graph(igraph_t* graph, string pattern, int delta, i
         }
 
         // deletion edges
+        if(u.y < pattern.length() && u_dist + 1 <= delta){
+            int v_x = u.x;
+            int v_y = u.y + 1;
+            int v_coordinate = v_y * n + v_x;
+
+            int vid;
+            // never seen before
+            if(seen_coordinates.find(v_coordinate) == seen_coordinates.end()){
+
+                vid = new_vid;
+                seen_coordinates[v_coordinate] = {vid, v_x, v_y, u_dist + 1};
+                new_vid++;
+
+                // enque vertex
+                q.push({vid, v_x, v_y, -1});
+
+            }else{
+                // coordinate seen before 
+                vertex v = seen_coordinates[v_coordinate];
+                vid = v.id;
+                
+                // update distance if needed
+                if(u_dist + 1 < v.dist){
+                    seen_coordinates[v_coordinate] = {vid, v_x, v_y, u_dist + 1};
+                }
+            }
+            igraph_vector_int_push_back(&alignment_graph_edges, u.id);
+            igraph_vector_int_push_back(&alignment_graph_edges, vid);
+            weights.push_back(1);
+            variants.push_back(-2);
+        }
 
         // sub/match edges
+
+        if(u.y < pattern.length()){
+            igraph_incident(graph, &incident_edges, old_uid, IGRAPH_OUT);
+            int m = igraph_vector_int_size(&incident_edges);
+
+            for(int i = 0; i < m; i++){
+
+                // check if symbol matches
+                int sym = (int) igraph_cattribute_EAN(graph, "label", igraph_vector_int_get(&incident_edges, i));
+
+                //cout << "(" << u.x << ", " << u.y << ") sym: " << sym << endl;
+                if(    (pattern[u.y] == 'A' && sym == 0) 
+                    || (pattern[u.y] == 'T' && sym == 1)
+                    || (pattern[u.y] == 'C' && sym == 2)
+                    || (pattern[u.y] == 'G' && sym == 3)){
+
+                    igraph_integer_t start, end;
+                    igraph_edge(graph, igraph_vector_int_get(&incident_edges, i), &start, &end);
+
+                    int v_x = inv_sorted_vertex[end];
+                    int v_y = u.y + 1;
+                    int v_coordinate = v_y * n + v_x;
+                    int vid;
+
+                    if(seen_coordinates.find(v_coordinate) == seen_coordinates.end()){
+                        // never encounter coordinate
+                        // add vertex with new vertex id and edge
+
+                        // Adds 0 to the distance from u
+                        vid = new_vid;
+                        seen_coordinates[v_coordinate] = {vid, v_x, v_y, u_dist};
+                        new_vid++;
+                        
+                        // enque vertex
+                        q.push({vid, v_x, v_y, -1});
+
+                    }else{
+                        // coordinate seen before 
+                        vertex v = seen_coordinates[v_coordinate];
+                        vid = v.id;
+
+                        // update distance if needed
+                        if(u_dist < v.dist){
+                            seen_coordinates[v_coordinate] = {vid, v_x, v_y, u_dist};
+                        }
+                    }
+                    igraph_vector_int_push_back(&alignment_graph_edges, u.id);
+                    igraph_vector_int_push_back(&alignment_graph_edges, vid);
+                    weights.push_back(0);
+                    variants.push_back(igraph_cattribute_EAN(graph, "variant", igraph_vector_int_get(&incident_edges, i)));
+
+                }else if (u_dist + 1 <= delta){
+
+                    igraph_integer_t start, end;
+                    igraph_edge(graph, igraph_vector_int_get(&incident_edges, i), &start, &end);
+
+                    int v_x = inv_sorted_vertex[end];
+                    int v_y = u.y + 1;
+                    int v_coordinate = v_y * n + v_x;
+                    int vid;
+
+                    if(seen_coordinates.find(v_coordinate) == seen_coordinates.end()){
+                        // never encounter coordinate
+                        // add vertex with new vertex id and edge
+
+                        // Adds 1 to the distance from u
+                        vid = new_vid;
+                        seen_coordinates[v_coordinate] = {vid, v_x, v_y, u_dist + 1};
+                        new_vid++;
+                        
+                        // enque vertex
+                        q.push({vid, v_x, v_y, -1});
+
+                    }else{
+                        // coordinate seen before 
+                        vertex v = seen_coordinates[v_coordinate];
+                        vid = v.id;
+
+                        // update distance if needed
+                        if(u_dist + 1 < v.dist){
+                            seen_coordinates[v_coordinate] = {vid, v_x, v_y, u_dist + 1};
+                        }
+                    }
+                    igraph_vector_int_push_back(&alignment_graph_edges, u.id);
+                    igraph_vector_int_push_back(&alignment_graph_edges, vid);
+                    weights.push_back(1);
+                    variants.push_back(igraph_cattribute_EAN(graph, "variant", igraph_vector_int_get(&incident_edges, i)));
+                }
+            }
+        }
+
+
+        // edges to sink vertex
+
+        if(u.y == pattern.length()){
+
+            int v_y = u.y+1;
+            int v_coordinate = n * v_y;
+
+            int vid;
+        
+            if(seen_coordinates.find(v_coordinate) == seen_coordinates.end()){
+                vid = new_vid;
+                seen_coordinates[v_coordinate] = {vid, 0, v_y, u_dist};
+                new_vid++;
+
+                //q.push({vid, 0, n*(pattern.length()+1), -1});
+
+            }else{
+                // coordinate seen before 
+                vertex v = seen_coordinates[v_coordinate];
+                vid = v.id;
+
+                // update distance if needed
+                if(u_dist < v.dist){
+                    seen_coordinates[v_coordinate] = {vid, 0, v_y, u_dist};
+                }
+            }
+
+            igraph_vector_int_push_back(&alignment_graph_edges, u.id);
+            igraph_vector_int_push_back(&alignment_graph_edges, vid);
+            weights.push_back(0);
+            variants.push_back(-3);
+
+        }
     }
+
+
 
     bool directed = true;
     igraph_empty(result, new_vid, directed);
@@ -340,7 +553,23 @@ void create_pruned_alignment_graph(igraph_t* graph, string pattern, int delta, i
     igraph_vector_int_destroy(&sorted_vertex);
 
     print_alignment_graph(result);
+
+
+    // reverse pruning
+
+    // get vertices reachable from the last vertex with distance at most delta
+    igraph_vector_int_t reverse_reachable;
+    igraph_vector_int_init(&reverse_reachable, 0);
+
+    reverse_weighted_reachable(result, new_vid-1, &reverse_reachable, delta);
+    int k = igraph_vector_int_size(&reverse_reachable);
+    for(int i = 0; i < k; i++){
+        cout << igraph_vector_int_get(&reverse_reachable, i) << ", ";
+    }
+    cout << endl;
+
 } 
+
 
 
 int main(){
@@ -360,7 +589,7 @@ int main(){
 
     // how to get reachable subgraph for each start vertex
     int dist = 5;
-    int start_vertex = 2;
+    int start_vertex = 1;
     igraph_vs_t vertex_selector;
     igraph_vector_int_list_t reachable_list;
 
@@ -377,8 +606,8 @@ int main(){
     get_induced_variation_graph(&variation_graph, reachable_vertex, &reachable_graph);
 
     igraph_t alignment_graph;
-    string P= "TCA";
-    int delta = 1;
+    string P= "CC";
+    int delta = 2;
     create_pruned_alignment_graph(&reachable_graph, P, delta, &alignment_graph);
 
     /*    
