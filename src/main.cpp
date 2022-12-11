@@ -3,7 +3,11 @@
 #include <fstream>
 #include <igraph.h>
 #include <unordered_map>
+#include <unordered_set>
 #include <queue>
+#include <chrono>
+
+#define VERBOSE true
 
 using namespace std;
 
@@ -13,7 +17,7 @@ typedef struct edge_attributes_struct{
     igraph_real_t variant;
 }edge_attributes;
 
-void print_variation_graph(igraph_t *graph){
+void print_variation_graph(const igraph_t *graph){
     igraph_vs_t vs;
     igraph_vit_t vit;
 
@@ -40,7 +44,12 @@ void print_variation_graph(igraph_t *graph){
 }
 
 
-void print_alignment_graph(igraph_t *graph){
+void print_alignment_graph(const igraph_t *graph){
+
+    cout << "\nPrinting alignment graph:" << endl;
+    cout << "pos = " << igraph_cattribute_GAN(graph, "position")
+        << ", substring = " << igraph_cattribute_GAS(graph, "substring") << endl;
+
     igraph_vs_t vs;
     igraph_vit_t vit;
 
@@ -67,14 +76,11 @@ void print_alignment_graph(igraph_t *graph){
 }
 
 
-void read_edge_file(string edge_file_name, igraph_t* graph){
+void read_edge_file(string edge_file_name, igraph_t* graph, int* num_variants){
     
     ifstream infile(edge_file_name);
 
-    int num_vertices;
-    infile >> num_vertices;
-    bool directed = true;
-    igraph_empty(graph, num_vertices, directed);
+    int num_vertices = -1;
 
     igraph_vector_int_t edges;
     igraph_vector_int_init(&edges, 0);
@@ -86,6 +92,13 @@ void read_edge_file(string edge_file_name, igraph_t* graph){
     int i = 0;
     while (infile >> start_vertex >> end_vertex >> edge_label >> variant_number)
     {
+        if(start_vertex > num_vertices-1){
+            num_vertices = start_vertex + 1;
+        }
+        if(end_vertex > num_vertices-1){
+            num_vertices= end_vertex + 1;
+        }
+
         igraph_real_t label;
         if(edge_label == 'A'){
             label = 0;
@@ -111,16 +124,21 @@ void read_edge_file(string edge_file_name, igraph_t* graph){
         i++;
     }
 
+    bool directed = true;
+    igraph_empty(graph, num_vertices, directed);
     igraph_add_edges(graph, &edges, NULL);
 
+    int max_variant = -1;
     for(edge_attributes a: attributes_vector){
         igraph_cattribute_EAN_set(graph, "label", a.edge_idx, a.label);
         igraph_cattribute_EAN_set(graph, "variant", a.edge_idx, a.variant);
+        if(a.variant > max_variant){
+            max_variant = a.variant;
+        }
     }
 
-    print_variation_graph(graph);
-    cout << "============= Graph Constructed =============" << endl;
-    
+    *num_variants = max_variant + 1;
+
 }
 
 
@@ -223,18 +241,23 @@ void reverse_weighted_reachable(igraph_t* graph, igraph_integer_t start_vid, igr
     igraph_topological_sorting(graph, &sorted_vertex, IGRAPH_IN);
     int n = igraph_vector_int_size(&sorted_vertex);
 
+    //cout << "size = " << n << endl;
+
     // get start index
     int start_idx = -1;
 
+    //cout << "reverse top order: ";
     for(int i = 0; i < n; i++){
-        //cout << igraph_vector_int_get(&sorted_vertex, i) << ", ";
+        //cout << i << ":" << igraph_vector_int_get(&sorted_vertex, i) << ", ";
         if(start_vid == igraph_vector_int_get(&sorted_vertex, i)){
             start_idx = i;
             break;
         }
     }
+    //cout << endl;
 
     vector<int> distance(n, INT_MAX-1);
+    //cout << "index of start: " << igraph_vector_int_get(&sorted_vertex, start_idx) << endl;
     distance[igraph_vector_int_get(&sorted_vertex, start_idx)] = 0;
 
     igraph_vector_int_t incident_edges;
@@ -260,6 +283,7 @@ void reverse_weighted_reachable(igraph_t* graph, igraph_integer_t start_vid, igr
     }
 
     for(int i = 0; i < n; i++){
+        //cout << i << ":" << distance[i] << ", ";
         if(distance[i] < delta){
             igraph_vector_int_push_back(result, i);
         }
@@ -271,6 +295,8 @@ void reverse_weighted_reachable(igraph_t* graph, igraph_integer_t start_vid, igr
 /*
 The main idea is that we consider the vertices of the alignment graph as laided out in |P||V| grid.
 Each row of length |V| is sorted in the same topological order.
+We hash x,y coordinates to track if a vertex as already been encountered and store as value the min dist
+result graph should not be initialized
 */
 void create_pruned_alignment_graph(igraph_t* graph, string pattern, int delta, igraph_t* result){
 
@@ -284,6 +310,7 @@ void create_pruned_alignment_graph(igraph_t* graph, string pattern, int delta, i
         inv_sorted_vertex[igraph_vector_int_get(&sorted_vertex, i)] = i;
     }
 
+    int sink_id = -1;
     /*
     for(int i = 0; i < n; i++){
         cout << igraph_vector_int_get(&sorted_vertex, i) << ", ";
@@ -515,6 +542,7 @@ void create_pruned_alignment_graph(igraph_t* graph, string pattern, int delta, i
             if(seen_coordinates.find(v_coordinate) == seen_coordinates.end()){
                 vid = new_vid;
                 seen_coordinates[v_coordinate] = {vid, 0, v_y, u_dist};
+                sink_id = vid;
                 new_vid++;
 
                 //q.push({vid, 0, n*(pattern.length()+1), -1});
@@ -537,83 +565,226 @@ void create_pruned_alignment_graph(igraph_t* graph, string pattern, int delta, i
 
         }
     }
-
-
-
+    // construct temporary forward-pruned only alignment graph
     bool directed = true;
-    igraph_empty(result, new_vid, directed);
-    igraph_add_edges(result, &alignment_graph_edges, NULL);
+    igraph_t forward_pruned_only_graph;
+    igraph_empty(&forward_pruned_only_graph, new_vid, directed);
+    igraph_add_edges(&forward_pruned_only_graph, &alignment_graph_edges, NULL);
 
     for(int i = 0; i < weights.size(); i++){
-        igraph_cattribute_EAN_set(result, "weight", i, weights.at(i));
-        igraph_cattribute_EAN_set(result, "variant", i, variants.at(i));
+        igraph_cattribute_EAN_set(&forward_pruned_only_graph, "weight", i, weights.at(i));
+        igraph_cattribute_EAN_set(&forward_pruned_only_graph, "variant", i, variants.at(i));
     }
 
     igraph_vector_int_destroy(&alignment_graph_edges);
     igraph_vector_int_destroy(&sorted_vertex);
 
-    print_alignment_graph(result);
+    //cout << "============= Forward Prunned Alignment Graph Constructed =============" << endl;
+    //print_alignment_graph(&forward_pruned_only_graph);
 
 
     // reverse pruning
 
     // get vertices reachable from the last vertex with distance at most delta
-    igraph_vector_int_t reverse_reachable;
-    igraph_vector_int_init(&reverse_reachable, 0);
+    igraph_vector_int_t reverse_reachable_vertex;
+    igraph_vector_int_init(&reverse_reachable_vertex, 0);
 
-    reverse_weighted_reachable(result, new_vid-1, &reverse_reachable, delta);
-    int k = igraph_vector_int_size(&reverse_reachable);
+    reverse_weighted_reachable(&forward_pruned_only_graph, sink_id, &reverse_reachable_vertex, delta);
+    int k = igraph_vector_int_size(&reverse_reachable_vertex);
+    
+    /*
+    cout << "Reverse reachable: ";
     for(int i = 0; i < k; i++){
-        cout << igraph_vector_int_get(&reverse_reachable, i) << ", ";
+        cout << igraph_vector_int_get(&reverse_reachable_vertex, i) << ", ";
     }
     cout << endl;
+    */
+
+    igraph_vs_t vs;
+    igraph_vs_vector(&vs, &reverse_reachable_vertex);
+
+    igraph_induced_subgraph(&forward_pruned_only_graph, result, vs, IGRAPH_SUBGRAPH_AUTO);
+    igraph_destroy(&forward_pruned_only_graph);
 
 } 
 
 
+void create_alignment_graph(igraph_t* variation_graph, int pos, string s, int alpha, int delta, igraph_t* alignment_graph){
+    
+    igraph_vs_t start_vertex_selector;
+    igraph_vs_1(&start_vertex_selector, pos);
 
-int main(){
+    igraph_vector_int_list_t reachable_vertex_list;
+    igraph_vector_int_list_init(&reachable_vertex_list, 0);
+    
+    get_reachable_vertex(variation_graph, start_vertex_selector, alpha + delta, &reachable_vertex_list);
+    igraph_vs_destroy(&start_vertex_selector);
+    
+    // since vertex selector is only for one vertex, we only need the first element
+    igraph_vector_int_t* reachable_vertex = igraph_vector_int_list_get_ptr(&reachable_vertex_list, 0);
+    
+    igraph_t reachable_graph;
+    get_induced_variation_graph(variation_graph, reachable_vertex, &reachable_graph);
+    
+    create_pruned_alignment_graph(&reachable_graph, s, delta, alignment_graph);
+
+    igraph_vector_int_list_destroy(&reachable_vertex_list);
+    igraph_destroy(&reachable_graph);
+}
+
+void get_variants(igraph_t* g, unordered_set<int>& variants){
+
+    igraph_es_t es;
+    igraph_es_all(&es, IGRAPH_EDGEORDER_ID);
+    igraph_eit_t eit;
+    igraph_eit_create(g, es, &eit);
+
+    while (!IGRAPH_EIT_END(eit)) {
+        int variant = igraph_cattribute_EAN(g, "variant" ,IGRAPH_EIT_GET(eit));
+        if(variant >= 0){
+            variants.insert(variant);
+        }
+
+        IGRAPH_EIT_NEXT(eit);
+    }
+    igraph_es_destroy(&es);
+    igraph_eit_destroy(&eit);
+}
+
+// returns a vector that assigns each alignment graph to a set using an integer
+// also prints the number of sets and size of each corresponding ILP
+void analyze_alignment_graph_set(vector<igraph_t>& alignment_graphs, int num_variants){
+    
+
+    igraph_vector_int_t edges;
+    igraph_vector_int_init(&edges, 0);
+
+    int ilp_idx = num_variants;
+
+    for(auto &g: alignment_graphs){
+        //print_alignment_graph(&g);
+
+        // obtain set of variants
+        unordered_set<int> variants;
+        get_variants(&g, variants);
+
+        // add edges for bipartite graph
+        for(int v: variants){
+            //cout << ilp_idx << ", " << v << endl;
+            igraph_vector_int_push_back(&edges, ilp_idx);
+            igraph_vector_int_push_back(&edges, v);
+        }
+        ilp_idx++;
+    }
+    int n = num_variants + alignment_graphs.size();
+
+    bool directed = false;
+    igraph_t bipartite;
+    igraph_empty(&bipartite, n, directed);
+    igraph_add_edges(&bipartite, &edges, NULL);
+
+    igraph_vector_int_t membership;
+    igraph_vector_int_init(&membership, n);
+    igraph_connected_components(&bipartite, &membership, NULL, NULL, IGRAPH_STRONG);
+
+    if(VERBOSE){
+        cout << "SubILP component assignments" << endl;
+        for(int i = 0; i < num_variants; i++){
+            cout << "x_" << i << ": " << igraph_vector_int_get(&membership, i) << endl;
+        }
+        cout << endl;
+
+        for(int i = num_variants; i < n; i++){
+            cout << "ILP_" << i << ": " << igraph_vector_int_get(&membership, i) << endl;
+        }
+        cout << endl;
+    }
+    // get number of binary variables for each component (size of each sub-ILP)
+    unordered_map<int, int> sizes;
+    for(int i = 0; i < n; i++){
+        int component = igraph_vector_int_get(&membership, i);
+        if(i < num_variants){
+            if(sizes.find(component) == sizes.end()){
+                sizes[component] = 1;
+            }else{
+                sizes[component] = sizes[component] + 1;
+            }
+        }else if(i >= num_variants){
+            // add number of edges in graph
+            igraph_t g = alignment_graphs.at(i - num_variants);
+            sizes[component] = sizes[component] + igraph_ecount(&g);
+        }
+    }
+
+    if(VERBOSE){
+        cout << "Component sizes (number of variables added across ILPs in each component)" << endl;
+        for (auto size : sizes){
+            cout << size.first << ": " << size.second <<  endl;
+        }
+    }
+    // clean up
+    igraph_vector_int_destroy(&membership);
+
+}
+
+int main(int argc, char** argv){
+
+    if(argc < 5){
+        cout << "Wrong number of arguments provided" << endl;
+        return 0;
+    }
+    string edge_file_name = argv[1];
+    string pos_substring_file_name = argv[2];
+    int alpha = atoi(argv[3]);
+    int delta = atoi(argv[4]);
 
     igraph_set_attribute_table(&igraph_cattribute_table);
 
     // construct variation graph
-    string edge_file_name = "edge_file.txt";
     igraph_t variation_graph;
-    read_edge_file(edge_file_name, &variation_graph);
+    int num_variants;
+
+    auto start = chrono::steady_clock::now();
+    read_edge_file(edge_file_name, &variation_graph, &num_variants);
+    auto stop = chrono::steady_clock::now();
+    auto duration = duration_cast<chrono::milliseconds>(stop - start);
+
+    cout << "\n============= Variation Graph Constructed =============\n" << endl;
+    cout << "construction time: " << duration.count() << " milliseconds\n" <<endl;
+    cout << "number variants: " << num_variants << endl;
+    cout << "number vertices: " << igraph_vcount(&variation_graph) << endl;
+    cout << "number edges: " << igraph_ecount(&variation_graph) << endl;
+    //print_variation_graph(&variation_graph);
 
     // read locations and strings
-    string pos_substring_file_name = "loc_substring.txt";
     vector<int> positions;
     vector<string> substrings;
     read_pos_substring_file(pos_substring_file_name, positions, substrings);
 
-    // how to get reachable subgraph for each start vertex
-    int dist = 5;
-    int start_vertex = 1;
-    igraph_vs_t vertex_selector;
-    igraph_vector_int_list_t reachable_list;
+    int N = positions.size();
+    vector<igraph_t> alignment_graphs;
 
-    igraph_vs_1(&vertex_selector, start_vertex);
-    igraph_vector_int_list_init(&reachable_list, 0);
-    
-    get_reachable_vertex(&variation_graph, vertex_selector, dist, &reachable_list);
-    igraph_vs_destroy(&vertex_selector);
-
-    // assuming only one vertex is specified by vertex selector, we get first vector
-    igraph_vector_int_t* reachable_vertex = igraph_vector_int_list_get_ptr(&reachable_list, 0);
-
-    igraph_t reachable_graph;
-    get_induced_variation_graph(&variation_graph, reachable_vertex, &reachable_graph);
-
-    igraph_t alignment_graph;
-    string P= "CC";
-    int delta = 2;
-    create_pruned_alignment_graph(&reachable_graph, P, delta, &alignment_graph);
-
-    /*    
-    for(long int i = 0; i < igraph_vector_int_size(reachable); i++){
-        cout << igraph_vector_int_get(reachable, i) << ", ";
+    if(VERBOSE){
+        cout << "\nConstructing alignment graphs...\n" << endl;
     }
-    cout << endl;
-    */
+    for(int i = 0; i < N; i++){
+        if(VERBOSE){
+            cout << "Constructing alignment graphs for position: " << positions[i] << endl;
+        }
+        auto start = chrono::steady_clock::now();
+        igraph_t alignment_graph;
+        create_alignment_graph(&variation_graph, positions[i], substrings[i], alpha, delta, &alignment_graph);
+        alignment_graphs.push_back(alignment_graph);
+        igraph_cattribute_GAN_set(&alignment_graph, "position", positions[i]);
+        igraph_cattribute_GAS_set(&alignment_graph, "substring", substrings[i].c_str());
+        auto stop = chrono::steady_clock::now();
+        auto duration = duration_cast<chrono::milliseconds>(stop - start);
+        cout << "time: " << duration.count() << " milliseconds\n" <<endl;
+    }
+    cout << "\n============= Alignment Graphs Constructed =============\n" << endl;
+
+    cout << "\nAnalyzing alignment graph set..." << endl;
+    analyze_alignment_graph_set(alignment_graphs, num_variants);
+
+    cout << "\n============= Alignment Graphs Analyzed =============\n" << endl;
 }
