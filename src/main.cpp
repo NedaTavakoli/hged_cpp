@@ -2,13 +2,14 @@
 #include <vector>
 #include <fstream>
 #include <igraph.h>
+#include <map>
 #include <unordered_map>
 #include <unordered_set>
 #include <queue>
 #include <chrono>
 #include "gurobi_c++.h"
 
-#define VERBOSE true
+#define VERBOSE false
 
 using namespace std;
 
@@ -39,6 +40,7 @@ void print_variation_graph(const igraph_t *graph){
                 << "variant: " << igraph_cattribute_EAN(graph, "variant" , igraph_vector_int_get(&edges, i)) << ")" << endl; 
             ;
         }
+        igraph_vector_int_destroy(&edges);
         IGRAPH_VIT_NEXT(vit);
         cout << endl;
     }
@@ -58,7 +60,9 @@ void print_alignment_graph(const igraph_t *graph){
     igraph_vs_all(&vs);
     igraph_vit_create(graph, vs, &vit);
     while (!IGRAPH_VIT_END(vit)) {
-        cout << IGRAPH_VIT_GET(vit) << ": " << endl;
+        cout << IGRAPH_VIT_GET(vit)  
+            << " start_end: " << igraph_cattribute_VAN(graph, "start_end", IGRAPH_VIT_GET(vit))  
+            << endl;
 
         igraph_vector_int_t edges;
         igraph_vector_int_init(&edges, 0);
@@ -312,7 +316,6 @@ void create_pruned_alignment_graph(igraph_t* graph, string pattern, int delta, i
         inv_sorted_vertex[igraph_vector_int_get(&sorted_vertex, i)] = i;
     }
 
-    int sink_id = -1;
     /*
     for(int i = 0; i < n; i++){
         cout << igraph_vector_int_get(&sorted_vertex, i) << ", ";
@@ -339,6 +342,9 @@ void create_pruned_alignment_graph(igraph_t* graph, string pattern, int delta, i
     vector <int> variants;
 
     igraph_vector_int_init(&alignment_graph_edges, 0);
+
+    int source_vertex_id = 0;
+    int sink_vertex_id = 0;
 
     queue<vertex> q;
     vertex u = {0, inv_sorted_vertex[0], 0, 0};
@@ -544,7 +550,7 @@ void create_pruned_alignment_graph(igraph_t* graph, string pattern, int delta, i
             if(seen_coordinates.find(v_coordinate) == seen_coordinates.end()){
                 vid = new_vid;
                 seen_coordinates[v_coordinate] = {vid, 0, v_y, u_dist};
-                sink_id = vid;
+                sink_vertex_id = vid;
                 new_vid++;
 
                 //q.push({vid, 0, n*(pattern.length()+1), -1});
@@ -581,8 +587,12 @@ void create_pruned_alignment_graph(igraph_t* graph, string pattern, int delta, i
     igraph_vector_int_destroy(&alignment_graph_edges);
     igraph_vector_int_destroy(&sorted_vertex);
 
+    igraph_cattribute_VAN_set(&forward_pruned_only_graph, "start_end", source_vertex_id, 1);
+    igraph_cattribute_VAN_set(&forward_pruned_only_graph, "start_end", sink_vertex_id, 2);
+
     //cout << "============= Forward Prunned Alignment Graph Constructed =============" << endl;
     //print_alignment_graph(&forward_pruned_only_graph);
+
 
 
     // reverse pruning
@@ -591,7 +601,7 @@ void create_pruned_alignment_graph(igraph_t* graph, string pattern, int delta, i
     igraph_vector_int_t reverse_reachable_vertex;
     igraph_vector_int_init(&reverse_reachable_vertex, 0);
 
-    reverse_weighted_reachable(&forward_pruned_only_graph, sink_id, &reverse_reachable_vertex, delta);
+    reverse_weighted_reachable(&forward_pruned_only_graph, sink_vertex_id, &reverse_reachable_vertex, delta);
     int k = igraph_vector_int_size(&reverse_reachable_vertex);
     
     /*
@@ -732,7 +742,8 @@ void analyze_alignment_graph_set(vector<igraph_t>& alignment_graphs,
     // clean up
     igraph_vector_int_destroy(&membership);
 
-
+    
+    // print statements for debugging
     if(VERBOSE){
         cout << "Global variable to component" << endl;
         for(int i = 0; i < global_variable_to_component.size(); i++){
@@ -743,84 +754,195 @@ void analyze_alignment_graph_set(vector<igraph_t>& alignment_graphs,
         for(int i = 0; i < subILP_to_component.size(); i++){
             cout << "ILP_" << i << ": " << subILP_to_component[i] << endl;
         }
+    }
 
-        cout << "\nComponent to global variant count" << endl;
-        for(int i = 0; i < component_to_global_variable_count.size(); i++){
-            cout << "component_" << i << ": " << component_to_global_variable_count[i] << endl;
+    cout << "\nComponent to global variant count:\n" << endl;
+    for(int i = 0; i < component_to_global_variable_count.size(); i++){
+        cout << "component_" << i << " has variants: " << component_to_global_variable_count[i] << endl;
+    }
+
+    //cout << "\nComponent to total binary variable count" << endl;
+    unordered_map<int, int> component_to_num_edges;
+    for(int i = 0; i < alignment_graphs.size(); i++){
+        
+        igraph_t g = alignment_graphs.at(i);
+        int component = subILP_to_component[i];
+
+        if(component_to_num_edges.find(component) == component_to_num_edges.end()){
+            component_to_num_edges[component] = igraph_ecount(&g);
+        }else{
+            component_to_num_edges[component] = component_to_num_edges[component] + igraph_ecount(&g);
         }
-
-        cout << "\nComponent to total binary variable count" << endl;
-        unordered_map<int, int> component_to_num_edges;
-        for(int i = 0; i < alignment_graphs.size(); i++){
-            
-            igraph_t g = alignment_graphs.at(i);
-            int component = subILP_to_component[i];
-
-            if(component_to_num_edges.find(component) == component_to_num_edges.end()){
-                component_to_num_edges[component] = igraph_ecount(&g);
-            }else{
-                component_to_num_edges[component] = component_to_num_edges[component] + igraph_ecount(&g);
-            }
-        }
-
-        for(int i = 0; i < component_to_global_variable_count.size(); i++){
-            cout << "component_" << i << ": " << component_to_global_variable_count[i] + component_to_num_edges[i] << endl;
-        }
+    }
+    for(int i = 0; i < component_to_global_variable_count.size(); i++){
+        cout << "component_" << i << " has total variables: " << component_to_global_variable_count[i] + component_to_num_edges[i] << endl;
     }
 }
 
 
 void construct_ILPs(vector<igraph_t>& alignment_graphs, 
-                    vector<int>& global_variable_to_component,
                     vector<int>& subILP_to_component,
                     vector<int>& global_variable_to_local_idx,
                     vector<int>& component_to_global_variable_count,
                     vector<GRBModel>& models
                     ){
 
-    // add variant boolean variables to each
+    // add variant boolean variables and objective to each
+    vector<GRBVar*> global_var_for_model = vector<GRBVar*>(models.size());
+
+    for(int i = 0; i < models.size(); i++){
+        global_var_for_model[i] = models[i].addVars(component_to_global_variable_count[i], GRB_BINARY);
+        GRBLinExpr obj = GRBLinExpr();
+
+        for(int j = 0; j < component_to_global_variable_count[i]; j++){
+            obj += global_var_for_model[i][j];
+        }
+        //addTerms
+        models[i].setObjective(obj, GRB_MAXIMIZE);
+    }
+    
+    /*
+    vector<int> current_variable_start_index = vector<int>(models.size());
+    for(int i = 0; i < models.size(); i++){
+        current_variable_start_index[i] = component_to_global_variable_count[i];
+    }
+    */
 
     for(int i = 0; i < alignment_graphs.size(); i++){
+        
+
+        auto start = chrono::steady_clock::now();
 
         // the number of variables that are added is equal to the number of edges
+        int model_id = subILP_to_component[i];
+        GRBVar* local_var = models[model_id].addVars(igraph_ecount(&alignment_graphs[i]), GRB_BINARY);
 
         igraph_vs_t vs;
         igraph_vit_t vit;
         igraph_bool_t loops = true;     // there are no loops, this is to get const. query time for degrees
 
         igraph_vs_all(&vs);
-        igraph_vit_create(&alignment_graphs.at(i), vs, &vit);
-
+        igraph_vit_create(&alignment_graphs[i], vs, &vit);
+        
+        
         while (!IGRAPH_VIT_END(vit)) {
-
-            int vid = IGRAPH_VIT_GET(vit);
-            igraph_integer_t in_degree, out_degree;
             
-            igraph_degree_1(&alignment_graphs.at(i), &in_degree, vid, IGRAPH_IN, loops);
-            igraph_degree_1(&alignment_graphs.at(i), &out_degree, vid, IGRAPH_OUT, loops);
+            int vid = IGRAPH_VIT_GET(vit);
+            
+            igraph_integer_t in_degree, out_degree;
+            igraph_degree_1(&alignment_graphs[i], &in_degree, vid, IGRAPH_IN, loops);
+            igraph_degree_1(&alignment_graphs[i], &out_degree, vid, IGRAPH_OUT, loops);
 
-            cout << "graph: " << i << " vertex: " << vid << " in-degree:" << in_degree << " out-degree: " << out_degree << endl;
+            /*
+            cout << "graph: " << i << " vertex: " << vid 
+                << " in-degree: " << in_degree 
+                << " out-degree: " << out_degree
+                << " start_end: " << igraph_cattribute_VAN(&alignment_graphs[i], "start_end", vid) 
+                << endl;
+            */
 
-            if(in_degree == 0){
+            GRBLinExpr lhs, rhs;
+            if(igraph_cattribute_VAN(&alignment_graphs[i], "start_end", vid) == 1){
+                lhs = GRBLinExpr(1);
+                rhs = GRBLinExpr();
 
-            }else if(out_degree == 0){
+                // iterate through outbound edges
+                igraph_vector_int_t edges;
+                igraph_vector_int_init(&edges, 0);
+                igraph_incident(&alignment_graphs[i], &edges, vid, IGRAPH_OUT);
+                int m = igraph_vector_int_size(&edges);
+                for(int i = 0; i < m; i++){
+                    rhs += local_var[igraph_vector_int_get(&edges, i)];
+                }
+                igraph_vector_int_destroy(&edges);
+
+            }else if(igraph_cattribute_VAN(&alignment_graphs[i], "start_end", vid) == 2){
+                lhs = GRBLinExpr();
+                rhs = GRBLinExpr(1);
+
+                // iterate through inbound edges
+                igraph_vector_int_t edges;
+                igraph_vector_int_init(&edges, 0);
+                igraph_incident(&alignment_graphs[i], &edges, vid, IGRAPH_IN);
+                int m = igraph_vector_int_size(&edges);
+                for(int i = 0; i < m; i++){
+                    lhs += local_var[igraph_vector_int_get(&edges, i)];
+                }
+                igraph_vector_int_destroy(&edges);                
 
             }else{
+                lhs = GRBLinExpr();
+                rhs = GRBLinExpr();
+
+                igraph_vector_int_t edges;
+                igraph_vector_int_init(&edges, 0);
+
+                // iterate through in bound edges
+                igraph_incident(&alignment_graphs[i], &edges, vid, IGRAPH_IN);
+                int m = igraph_vector_int_size(&edges);
+                for(int i = 0; i < m; i++){
+                    lhs += local_var[igraph_vector_int_get(&edges, i)];
+                }
+
+                // iterate through outbound edges
+                igraph_incident(&alignment_graphs[i], &edges, vid, IGRAPH_OUT);
+                m = igraph_vector_int_size(&edges);
+                for(int i = 0; i < m; i++){
+                    rhs += local_var[igraph_vector_int_get(&edges, i)];
+                }
+
+                igraph_vector_int_destroy(&edges);  
 
             }
 
+            models[model_id].addConstr(lhs, GRB_EQUAL, rhs);
             IGRAPH_VIT_NEXT(vit);
         }
-        
-        cout << endl;
+
         igraph_vs_destroy(&vs);
         igraph_vit_destroy(&vit);
 
-
         // add binding constraints
+        igraph_es_t es;
+        igraph_eit_t eit;
+        igraph_es_all(&es, IGRAPH_EDGEORDER_ID);
+        igraph_eit_create(&alignment_graphs[i], es, &eit);
 
+        while(!IGRAPH_EIT_END(eit)){
+            int eid = IGRAPH_EIT_GET(eit);
+            int variant = igraph_cattribute_EAN(&alignment_graphs[i], "variant", eid);
+            if(variant >= 0){
+                int idx = global_variable_to_local_idx[variant];
+
+                GRBLinExpr lhs = GRBLinExpr();
+                lhs += global_var_for_model[model_id][idx];
+                lhs += local_var[eid];
+                GRBLinExpr rhs = GRBLinExpr(1);
+                models[model_id].addConstr(lhs, GRB_LESS_EQUAL, rhs);
+            }
+
+            IGRAPH_EIT_NEXT(eit);
+        }
+
+        igraph_es_destroy(&es);
+        igraph_eit_destroy(&eit);
+
+        if(VERBOSE){
+            auto stop = chrono::steady_clock::now();
+            auto duration = duration_cast<chrono::milliseconds>(stop - start);
+            cout << "Time for alignment_graph_" << i << ": " << duration.count() << " milliseconds" << endl;
+        }
     }
+
+    // update and view models for checking
+    for(int i = 0; i < models.size(); i++){
+        models[i].update();
+        string file_name = "model_" + to_string(i) + ".lp";
+        models[i].write(file_name);
+    }
+    
 }
+
 
 int main(int argc, char** argv){
 
@@ -845,10 +967,10 @@ int main(int argc, char** argv){
     auto duration = duration_cast<chrono::milliseconds>(stop - start);
 
     cout << "\n============= Variation Graph Constructed =============\n" << endl;
-    cout << "construction time: " << duration.count() << " milliseconds\n" <<endl;
-    cout << "number variants: " << num_variants << endl;
-    cout << "number vertices: " << igraph_vcount(&variation_graph) << endl;
-    cout << "number edges: " << igraph_ecount(&variation_graph) << endl;
+    cout << "Construction time: " << duration.count() << " milliseconds\n" <<endl;
+    cout << "Number of variants: " << num_variants << endl;
+    cout << "Number of vertices: " << igraph_vcount(&variation_graph) << endl;
+    cout << "Number of edges: " << igraph_ecount(&variation_graph) << endl;
     //print_variation_graph(&variation_graph);
 
     // read locations and strings
@@ -875,10 +997,12 @@ int main(int argc, char** argv){
         auto stop = chrono::steady_clock::now();
         auto duration = duration_cast<chrono::milliseconds>(stop - start);
         cout << "time: " << duration.count() << " milliseconds\n" <<endl;
+
+        //print_alignment_graph(&alignment_graph);
     }
     cout << "\n============= Alignment Graphs Constructed =============\n" << endl;
 
-    cout << "\nAnalyzing alignment graph set..." << endl;
+    cout << "Analyzing alignment graph set..." << endl;
 
     vector<int> global_variable_to_component;
     vector<int> subILP_to_component;
@@ -903,10 +1027,85 @@ int main(int argc, char** argv){
         models.push_back(GRBModel(env));
     }
 
+    cout << "\nConstructing ILP models from alignment graphs...\n" << endl;
     construct_ILPs(alignment_graphs, 
-                    global_variable_to_component, 
                     subILP_to_component, 
                     global_variable_to_local_idx, 
                     component_to_variant_count,
                     models);
+    
+    cout << "\n============= ILP models constructed =============\n" << endl;
+
+    cout << "Solving ILPs...\n" << endl;
+    for(int i = 0; i < models.size(); i++){
+
+        cout << "Solving ILP_" << i << "\n" <<endl;
+        
+        auto start = chrono::steady_clock::now();
+        models[i].optimize();
+
+        auto stop = chrono::steady_clock::now();
+        auto duration = duration_cast<chrono::milliseconds>(stop - start);
+        cout << "time: " << duration.count() << " milliseconds\n" <<endl;
+    }
+
+    cout << "\n============= ILP models solved =============\n" << endl;
+
+    // we need to invert the map from seperate ILPs
+    map<pair<int, int>, int> component_index_pair_to_variant;
+    for(int i = 0; i < num_variants; i++){
+        
+        auto p = make_pair(global_variable_to_component[i], global_variable_to_local_idx[i]);
+
+        if(component_index_pair_to_variant.find(p) == component_index_pair_to_variant.end()){
+            component_index_pair_to_variant[p] = i;
+        }
+        
+    }
+
+    vector<int> solution = vector<int>(num_variants);
+
+    for(int i = 0; i < models.size(); i++){
+
+        GRBVar* vars = NULL;
+        vars = models[i].getVars();
+        cout << "ILP_" << i << " local assignments: " << endl;
+        for (int j = 0; j < component_to_variant_count[i]; j++) {
+            cout << vars[j].get(GRB_StringAttr_VarName) << " = " << vars[j].get(GRB_DoubleAttr_X) << endl;
+            solution[component_index_pair_to_variant[make_pair(i, j)]] = vars[j].get(GRB_DoubleAttr_X);
+        }
+        cout << endl;
+    }
+
+    int sum = 0;
+    cout << "\nFinal assignment: " << endl;
+    for(int i = 0; i < solution.size(); i++){
+        cout << "x_" << i << " = " << solution[i] << endl;
+        sum += solution[i];
+    }
+    cout << "\nNumber of variants deleted: " << sum << endl;
+
+    cout << "\nComputing number of edges maintained..." << endl;
+    igraph_es_t es;
+    igraph_eit_t eit;
+    igraph_es_all(&es, IGRAPH_EDGEORDER_ID);
+    igraph_eit_create(&variation_graph, es, &eit);
+    int total_edges = 0;
+    int maintained_edges = 0;
+
+    while(!IGRAPH_EIT_END(eit)){
+
+        int eid = IGRAPH_EIT_GET(eit);
+        int variant = igraph_cattribute_EAN(&variation_graph, "variant", eid);
+        if(variant < 0 || (variant >= 0 && solution[variant] == 0)){
+            maintained_edges++;
+        }
+
+        total_edges++;
+        IGRAPH_EIT_NEXT(eit);
+    }
+    igraph_es_destroy(&es);
+    igraph_eit_destroy(&eit);
+
+    cout << "Maintained " << maintained_edges << " out of " << total_edges << " edges.\n" << endl;
 }
