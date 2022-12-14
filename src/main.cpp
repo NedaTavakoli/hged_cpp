@@ -10,7 +10,7 @@
 #include <climits>
 #include "gurobi_c++.h"
 
-#define VERBOSE true
+#define VERBOSE false
 #define WRITE_ILPS_TO_FILE false
 
 using namespace std;
@@ -828,7 +828,9 @@ void construct_ILPs(vector<igraph_t>& alignment_graphs,
 
         if(VERBOSE){
             cout << "Alignment_graph_" << i << " ILP construction in component (model): " << model_id << endl;
-        }  
+        }else if(!VERBOSE && i % 100 == 0){
+            cout << "Constructing ILP for alignment_graph: " << i << " out of " << alignment_graphs.size() << " (increments of 100)" << endl;
+        }
 
         GRBVar* local_var = models[model_id].addVars(igraph_ecount(&alignment_graphs[i]), GRB_BINARY);
 
@@ -971,6 +973,10 @@ void construct_ILPs(vector<igraph_t>& alignment_graphs,
 
 int main(int argc, char** argv){
 
+    GRBEnv env = GRBEnv();
+    env.set("OutputFlag", "0");
+    env.start();
+
     if(argc < 5){
         cout << "Wrong number of arguments provided" << endl;
         return 0;
@@ -998,6 +1004,7 @@ int main(int argc, char** argv){
     cout << "Number of edges: " << igraph_ecount(&variation_graph) << endl;
     //print_variation_graph(&variation_graph);
 
+    cout << "\nReading pos_substring file...\n" << endl;
     // read locations and strings
     vector<int> positions;
     vector<string> substrings;
@@ -1006,12 +1013,14 @@ int main(int argc, char** argv){
     int N = positions.size();
     vector<igraph_t> alignment_graphs;
 
-    if(VERBOSE){
-        cout << "\nConstructing alignment graphs...\n" << endl;
-    }
+
+    cout << "\nConstructing alignment graphs...\n" << endl;
+    
     for(int i = 0; i < N; i++){
         if(VERBOSE){
             cout << "Constructing alignment graphs for position: " << positions[i] << endl;
+        }else if (!VERBOSE && i % 100 == 0){
+            cout << "Constructing alignment graph: " << i << " out of " << N << " (increments of 100)" << endl;
         }
         auto start = chrono::steady_clock::now();
         igraph_t alignment_graph;
@@ -1019,9 +1028,11 @@ int main(int argc, char** argv){
         alignment_graphs.push_back(alignment_graph);
         igraph_cattribute_GAN_set(&alignment_graph, "position", positions[i]);
         igraph_cattribute_GAS_set(&alignment_graph, "substring", substrings[i].c_str());
-        auto stop = chrono::steady_clock::now();
-        auto duration = duration_cast<chrono::milliseconds>(stop - start);
-        cout << "time: " << duration.count() << " milliseconds\n" <<endl;
+        if(VERBOSE){
+            auto stop = chrono::steady_clock::now();
+            auto duration = duration_cast<chrono::milliseconds>(stop - start);
+            cout << "time: " << duration.count() << " milliseconds\n" <<endl;
+        }
 
         //print_alignment_graph(&alignment_graph);
     }
@@ -1045,8 +1056,6 @@ int main(int argc, char** argv){
     cout << "\n============= Alignment Graphs Analyzed =============\n" << endl;
     cout << "number of components: " << num_components << endl;
 
-    GRBEnv env = GRBEnv();
-    env.start();
 
     vector<GRBModel> models;
     for(int i = 0; i < num_components; i++){
@@ -1066,14 +1075,19 @@ int main(int argc, char** argv){
     cout << "Solving ILPs...\n" << endl;
     for(int i = 0; i < models.size(); i++){
 
-        cout << "Solving ILP_" << i << "\n" <<endl;
-        
+        if(VERBOSE){
+            cout << "Solving ILP_" << i << "\n" <<endl;
+        }else if(!VERBOSE && i % 100 == 0){
+            cout << "Solving ILP_" << i << " out of " << models.size() << " (increments of 100)" << endl;
+        }
         auto start = chrono::steady_clock::now();
         models[i].optimize();
 
         auto stop = chrono::steady_clock::now();
         auto duration = duration_cast<chrono::milliseconds>(stop - start);
-        cout << "time: " << duration.count() << " milliseconds\n" <<endl;
+        if(VERBOSE){
+            cout << "time: " << duration.count() << " milliseconds\n" <<endl;
+        }
     }
 
     cout << "\n============= ILP models solved =============\n" << endl;
