@@ -27,12 +27,11 @@ using value_elemet = boost::tuple<std::string, std::string, std::string, std::st
 using Value_type = std::vector<value_elemet>;
 typedef std::unordered_map<int, Value_type> tuple_list; 
 
-//typedef std::vector<boost::tuple<int, std::string, std::string, std::string, std::string>> tuple_list; // this vector is used for POS, REF, ALT, SAMPLE=GT
-
 /**
- * @brief   Extract POS, REF, ALT, SAMPLe=GT, from the vcf and fasta file 
- *          Input:  vcf file, reference fasta file, alpha, chr
- *          Output: tuple_list contain list of tuples of POS, REF, ALT, SAMPLE=GT  
+ * @brief   Extract POS, REF, ALT, SAMPLe, GT, from the vcf and fasta file 
+ *          Input:  vcf file, reference fasta file, chr, first variant position, last variant position, list of variant positions
+ *          Output: tuple_list contains is a dictionary with key as variant position and value is a list of tuples containing (REF, ALT, SAMPLE, GT)
+ *          the form of the output is {POS_1:[(REF, ALT, SAMPLE, GT), (REF, ALT, SAMPLE, GT),.... ], POS_2, [(REF, ALT, SAMPLE, GT), (REF, ALT, SAMPLE, GT),.... ],....}
  *
  */
 void  extract_vcf_pos_ref_alt_sample_gt (const std::string &vcf_file, const std::string &fasta_file, const int &chr,\
@@ -40,7 +39,7 @@ void  extract_vcf_pos_ref_alt_sample_gt (const std::string &vcf_file, const std:
 {
    // seed random generator by time in seconds (this may create issue if two instances are launched at the same time)
     srand(time(0)); int random = rand() % 100000;  
-    std::string tmp_file = ".pos_ref_alt_sample_GT_chr_" + std::to_string(chr) + "_" + std::to_string(random) + ".txt";
+    std::string tmp_file = "pos_ref_alt_sample_GT_chr_" + std::to_string(chr) + "_" + std::to_string(random) + ".txt";
     std::string cmd = std::string(TOSTRING(BCFTOOLSPATH)) + " query -i \'(TYPE=\"snp\" || TYPE=\"indel\") && GT=\"alt\"\'" + " -f \'%POS\t%REF\t%ALT[\t%SAMPLE\t%GT]\n\'  "  + vcf_file + " >  " + tmp_file;
 
     std::cout << "INFO, hged::main, extracting pos, ref, alt, non-zero GT from vcf file using command: " << cmd << std::endl;
@@ -65,8 +64,6 @@ void  extract_vcf_pos_ref_alt_sample_gt (const std::string &vcf_file, const std:
         variant_positions.push_back(pos);
         while (iss >> sample >> gt)
         {
-          //tl.push_back({pos, REF, ALT, sample, gt});
-          //tl[pos].push_back({ REF, ALT, sample, gt});
           tl[pos].push_back(boost::make_tuple(REF, ALT, sample, gt)); 
         }
       }
@@ -120,10 +117,9 @@ void get_linear_backbone(const std::string &fasta_file, const int &chr, int &sta
 
   void obtain_substrings(std::string &backbone_seq, int &start_pos, const int &alpha, tuple_list &tl ){
 
-
     // seed random generator by time in seconds (this may create issue if two instances are launched at the same time)
     srand(time(0)); int random = rand() % 100000;  
-    std::string pos_sub = ".pos_sub_alpha_" +std::to_string(alpha) + "_" + std::to_string(random) + ".txt";
+    std::string pos_sub = "pos_sub_alpha_" +std::to_string(alpha) + "_" + std::to_string(random) + ".txt";
     std::cout << "INFO, hged::obtain_substring, extracting substrings per position and save to the file named: "  << pos_sub << std::endl;
 
     std::ofstream pos_sub_file (pos_sub);
@@ -136,7 +132,7 @@ void get_linear_backbone(const std::string &fasta_file, const int &chr, int &sta
     std::string s;
 
     for (const auto& i: tl) {
-      std::cout << "POS: " << i.first << std::endl;
+      // std::cout << "POS: " << i.first << std::endl;
       for (std::vector<value_elemet>::size_type j =0 ; j < i.second.size() ; ++j){
         // std::cout << "POS: " << i.first << std::endl;
         // std::cout << "REF: " << boost::get<0> (i.second.at(j))  << std::endl;
@@ -149,13 +145,11 @@ void get_linear_backbone(const std::string &fasta_file, const int &chr, int &sta
         std::string alt = boost::get<3> (i.second.at(j));
         if( (alt.compare(0, 1, "0") != 0) || (alt.compare(2, 1, "0") != 0) ){
 
-        
           int current_pos = i.first ;
           std::string s = " ";
           bool sample_found_at_pos;
           std::string alt_choice;
         
-
           while (current_pos < final_pos && s.size() < alpha){
             if (tl.find(current_pos) != tl.end())  { // the position exists in the unordered map
                 sample_found_at_pos = false;
@@ -186,17 +180,13 @@ void get_linear_backbone(const std::string &fasta_file, const int &chr, int &sta
               current_pos +=1;
            }
 
-           // pos_substrings[i.first].insert(s);
-
           }
             pos_substrings[i.first].insert(s);
-            
-        }
-       // pos_substrings[i.first].insert(s);
       
+        }      
     }
         pos_sub_file << std::to_string(i.first) + " " << pos_substrings[i.first] << std::endl;
-        std::cout << "POS_substring for POS " << i.first<< " set of substring" << pos_substrings[i.first] <<std::endl;
+        // std::cout << "POS_substring for POS " << i.first<< " set of substring" << pos_substrings[i.first] <<std::endl;
     }
    
   }
@@ -205,12 +195,11 @@ void get_linear_backbone(const std::string &fasta_file, const int &chr, int &sta
     
     // seed random generator by time in seconds (this may create issue if two instances are launched at the same time)
     srand(time(0)); int random = rand() % 100000;  
-    std::string graph_file = ".construct_graph_" + std::to_string(random) + ".txt";
+    std::string graph_file = "graph_" + std::to_string(random) + ".txt";
     std::cout << "INFO, hged::construct graph, constructing graph file: "  << graph_file << std::endl;
 
     std::ofstream graph_file_name (graph_file);
     
-
     for (int i = 0 ; i < backbone_seq.size() ; ++i){
 
       // add backbone edges
@@ -226,13 +215,9 @@ void get_linear_backbone(const std::string &fasta_file, const int &chr, int &sta
      std::string ref;
     std::unordered_map<int, Value_type>::iterator it = tl.begin();
 
+      for ( auto i = tl.begin(); i != tl.end(); ++i ){
 
-    
-
-
-       for ( auto i = tl.begin(); i != tl.end(); ++i ){
-      // std::cout << "POS: " << i.first << std::endl;
-      //for (std::vector<value_elemet>::size_type j =0 ; j < i.second.size() ; ++j){
+        // std::cout << "POS: " << i.first << std::endl;
         // std::cout << "POS: " << i.first << std::endl;
         // std::cout << "REF: " << boost::get<0> (i.second.at(j))  << std::endl;
         // std::cout << "ALT: " <<  boost::get<1> (i.second.at(j))  << std::endl;
@@ -240,15 +225,12 @@ void get_linear_backbone(const std::string &fasta_file, const int &chr, int &sta
         // std::cout << "GT: " << boost::get<3> (i.second.at(j))  << std::endl;
 
         alt = boost::get<1> (i->second.at(0));
-        std::cout << "POS " << i->first << " ALT " << alt << std::endl;
+        // std::cout << "POS " << i->first << " ALT " << alt << std::endl;
         ref = boost::get<0> (i->second.at(0));
-       
-
-     // }
+  
         std::vector<std::string> alt_splited;
-        //std::vector<std::string>::iterator it;
-     
         boost::split(alt_splited, alt, boost::is_any_of(",")); //split ALT over comma, save to a vector
+
         for (size_t k = 0; k < alt_splited.size() ; ++k ){ // for each element in alt
           if (k == 0){
            start = i->first;
@@ -266,26 +248,16 @@ void get_linear_backbone(const std::string &fasta_file, const int &chr, int &sta
             end = new_vertex;
 
           }
-
-          // TODO : remove duplicates
-         // graph_file_name << std::to_string(start) + " "  + std::to_string(end) + " " + alt_splited[k] + " " + std::to_string(i.first-start_pos) << std::endl;
      
          graph_file_name << std::to_string(start-start_pos) + " "  + std::to_string(end-start_pos) + " " + alt_splited[k] + " " + std::to_string(tl.size()-index-1) << std::endl;
-          //graph_file_name << std::to_string(start-start_pos) + " "  + std::to_string(end) + " " + alt_splited[k] + " " + std::to_string(index) << std::endl;
-          //graph_file_name << std::to_string(start) + " "  + std::to_string(end) + " " + alt_splited[k] + " " + std::to_string(index) << std::endl 
+        
     }
       index +=1;
-      
 
     }
 
-    // remove duplicate lines
-
-
-     }
+    }
   
-
-
 
 int main(int argc, char **argv) {
 
@@ -304,9 +276,10 @@ int main(int argc, char **argv) {
 
   extract_vcf_pos_ref_alt_sample_gt (parameters.vcffile, parameters.fasta_ref_file, parameters.chr, start_pos,\
    last_pos, variant_positions, tl);
-  
+
   last_pos = last_pos + (boost::get<0> (tl[last_pos].at(0))).size(); 
   get_linear_backbone (parameters.fasta_ref_file, parameters.chr, start_pos, last_pos, backbone_seq);
+
   obtain_substrings (backbone_seq, start_pos, parameters.alpha, tl);
   construct_graph (backbone_seq, start_pos, last_pos, tl, variant_positions);
 
