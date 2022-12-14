@@ -9,7 +9,7 @@
 #include <chrono>
 #include "gurobi_c++.h"
 
-#define VERBOSE false
+#define VERBOSE true
 
 using namespace std;
 
@@ -92,7 +92,8 @@ void read_edge_file(string edge_file_name, igraph_t* graph, int* num_variants){
     igraph_vector_int_init(&edges, 0);
 
     int start_vertex, end_vertex;
-    char edge_label, variant_number;
+    char edge_label;
+    string variant_number;
 
     vector<edge_attributes> attributes_vector;
     int i = 0;
@@ -118,8 +119,8 @@ void read_edge_file(string edge_file_name, igraph_t* graph, int* num_variants){
 
         igraph_real_t variant;
 
-        if(variant_number != '-'){
-            attributes_vector.push_back({i, label, (igraph_real_t) (variant_number - '0')});
+        if(variant_number != "-"){
+            attributes_vector.push_back({i, label, stod(variant_number.c_str())});
         }else{
             attributes_vector.push_back({i, label, -1});
         }
