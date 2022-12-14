@@ -7,8 +7,8 @@
 #include <unordered_set>
 #include <queue>
 #include <chrono>
-#include "gurobi_c++.h"
 #include <climits>
+#include "gurobi_c++.h"
 
 #define VERBOSE true
 #define WRITE_ILPS_TO_FILE false
@@ -674,7 +674,9 @@ void analyze_alignment_graph_set(vector<igraph_t>& alignment_graphs,
                                 vector<int>& global_variable_to_component,
                                 vector<int>& subILP_to_component,
                                 vector<int>& global_variable_to_local_idx,
-                                vector<int>& component_to_global_variable_count){
+                                vector<int>& component_to_global_variable_count,
+                                int* num_components
+                                ){
     
 
     igraph_vector_int_t edges;
@@ -696,6 +698,7 @@ void analyze_alignment_graph_set(vector<igraph_t>& alignment_graphs,
             igraph_vector_int_push_back(&edges, v);
         }
         ilp_idx++;
+
     }
     int n = num_variants + alignment_graphs.size();
 
@@ -715,10 +718,13 @@ void analyze_alignment_graph_set(vector<igraph_t>& alignment_graphs,
 
     unordered_map<int, int> sizes;
 
-
+    *num_components = 0;
     for(int i = 0; i < n; i++){
 
         int component = igraph_vector_int_get(&membership, i);
+        if(component + 1 > *num_components){
+            *num_components = component + 1;
+        }
 
         if(i < num_variants){
             
@@ -737,7 +743,7 @@ void analyze_alignment_graph_set(vector<igraph_t>& alignment_graphs,
     }
 
 
-    component_to_global_variable_count = vector<int>(sizes.size());
+    component_to_global_variable_count = vector<int>(*num_components, 0);
     for (auto size : sizes){
         component_to_global_variable_count[size.first] = size.second;
     }
@@ -813,12 +819,17 @@ void construct_ILPs(vector<igraph_t>& alignment_graphs,
     */
 
     for(int i = 0; i < alignment_graphs.size(); i++){
-        
+      
 
         auto start = chrono::steady_clock::now();
 
         // the number of variables that are added is equal to the number of edges
         int model_id = subILP_to_component[i];
+
+        if(VERBOSE){
+            cout << "Alignment_graph_" << i << " ILP construction in component (model): " << model_id << endl;
+        }  
+
         GRBVar* local_var = models[model_id].addVars(igraph_ecount(&alignment_graphs[i]), GRB_BINARY);
 
         igraph_vs_t vs;
@@ -941,7 +952,8 @@ void construct_ILPs(vector<igraph_t>& alignment_graphs,
         if(VERBOSE){
             auto stop = chrono::steady_clock::now();
             auto duration = duration_cast<chrono::milliseconds>(stop - start);
-            cout << "Time for alignment_graph_" << i << " ILP construction: " << duration.count() << " milliseconds" << endl;
+            cout << "\tTime for alignment_graph_" << i << " ILP construction: " << duration.count() << " milliseconds" 
+                " component (model): " << model_id << endl;
         }
     }
 
@@ -1021,22 +1033,23 @@ int main(int argc, char** argv){
     vector<int> subILP_to_component;
     vector<int> global_variable_to_local_idx;
     vector<int> component_to_variant_count;
-
+    int num_components;
     analyze_alignment_graph_set(alignment_graphs, 
                                 num_variants, 
                                 global_variable_to_component, 
                                 subILP_to_component, 
                                 global_variable_to_local_idx, 
-                                component_to_variant_count);
+                                component_to_variant_count,
+                                &num_components);
 
     cout << "\n============= Alignment Graphs Analyzed =============\n" << endl;
-
+    cout << "number of components: " << num_components << endl;
 
     GRBEnv env = GRBEnv();
     env.start();
 
     vector<GRBModel> models;
-    for(int i = 0; i < component_to_variant_count.size(); i++){
+    for(int i = 0; i < num_components; i++){
         models.push_back(GRBModel(env));
     }
 
@@ -1084,6 +1097,7 @@ int main(int argc, char** argv){
         GRBVar* vars = NULL;
         vars = models[i].getVars();
         cout << "ILP_" << i << " local assignments: " << endl;
+        cout << "variable count: " << component_to_variant_count[i] << endl;
         for (int j = 0; j < component_to_variant_count[i]; j++) {
             cout << vars[j].get(GRB_StringAttr_VarName) << " = " << vars[j].get(GRB_DoubleAttr_X) << endl;
             solution[component_index_pair_to_variant[make_pair(i, j)]] = vars[j].get(GRB_DoubleAttr_X);
