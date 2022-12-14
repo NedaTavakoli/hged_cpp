@@ -8,6 +8,7 @@
 #include <queue>
 #include <chrono>
 #include "gurobi_c++.h"
+#include <climits>
 
 #define VERBOSE true
 #define WRITE_ILPS_TO_FILE false
