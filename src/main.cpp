@@ -10,6 +10,7 @@
 #include "gurobi_c++.h"
 
 #define VERBOSE true
+#define WRITE_ILPS_TO_FILE false
 
 using namespace std;
 
@@ -291,7 +292,7 @@ void reverse_weighted_reachable(igraph_t* graph, igraph_integer_t start_vid, igr
 
     for(int i = 0; i < n; i++){
         //cout << i << ":" << distance[i] << ", ";
-        if(distance[i] < delta){
+        if(distance[i] <= delta){
             igraph_vector_int_push_back(result, i);
         }
     }
@@ -785,7 +786,8 @@ void construct_ILPs(vector<igraph_t>& alignment_graphs,
                     vector<int>& subILP_to_component,
                     vector<int>& global_variable_to_local_idx,
                     vector<int>& component_to_global_variable_count,
-                    vector<GRBModel>& models
+                    vector<GRBModel>& models,
+                    int delta
                     ){
 
     // add variant boolean variables and objective to each
@@ -903,11 +905,14 @@ void construct_ILPs(vector<igraph_t>& alignment_graphs,
         igraph_vs_destroy(&vs);
         igraph_vit_destroy(&vit);
 
-        // add binding constraints
+        // add binding constraints and delta constraint
         igraph_es_t es;
         igraph_eit_t eit;
         igraph_es_all(&es, IGRAPH_EDGEORDER_ID);
         igraph_eit_create(&alignment_graphs[i], es, &eit);
+
+        GRBLinExpr delta_constraint_rhs = GRBLinExpr(delta);
+        GRBLinExpr delta_constraint_lhs = GRBLinExpr();
 
         while(!IGRAPH_EIT_END(eit)){
             int eid = IGRAPH_EIT_GET(eit);
@@ -922,24 +927,30 @@ void construct_ILPs(vector<igraph_t>& alignment_graphs,
                 models[model_id].addConstr(lhs, GRB_LESS_EQUAL, rhs);
             }
 
+            delta_constraint_lhs += igraph_cattribute_EAN(&alignment_graphs[i], "weight", eid)*local_var[eid];
             IGRAPH_EIT_NEXT(eit);
         }
+
+        models[model_id].addConstr(delta_constraint_lhs, GRB_LESS_EQUAL, delta_constraint_rhs);
 
         igraph_es_destroy(&es);
         igraph_eit_destroy(&eit);
 
+
         if(VERBOSE){
             auto stop = chrono::steady_clock::now();
             auto duration = duration_cast<chrono::milliseconds>(stop - start);
-            cout << "Time for alignment_graph_" << i << ": " << duration.count() << " milliseconds" << endl;
+            cout << "Time for alignment_graph_" << i << " ILP construction: " << duration.count() << " milliseconds" << endl;
         }
     }
 
     // update and view models for checking
     for(int i = 0; i < models.size(); i++){
         models[i].update();
-        string file_name = "model_" + to_string(i) + ".lp";
-        models[i].write(file_name);
+        if(WRITE_ILPS_TO_FILE){
+            string file_name = "model_" + to_string(i) + ".lp";
+            models[i].write(file_name);
+        }
     }
     
 }
@@ -1033,7 +1044,8 @@ int main(int argc, char** argv){
                     subILP_to_component, 
                     global_variable_to_local_idx, 
                     component_to_variant_count,
-                    models);
+                    models,
+                    delta);
     
     cout << "\n============= ILP models constructed =============\n" << endl;
 
@@ -1084,29 +1096,30 @@ int main(int argc, char** argv){
         cout << "x_" << i << " = " << solution[i] << endl;
         sum += solution[i];
     }
-    cout << "\nNumber of variants deleted: " << sum << endl;
+    cout << "\nNumber of variants deleted: " << sum << " out of " << num_variants <<endl;
 
-    cout << "\nComputing number of edges maintained..." << endl;
+    cout << "\nComputing number of variant edges maintained..." << endl;
     igraph_es_t es;
     igraph_eit_t eit;
     igraph_es_all(&es, IGRAPH_EDGEORDER_ID);
     igraph_eit_create(&variation_graph, es, &eit);
-    int total_edges = 0;
-    int maintained_edges = 0;
+    int total_variant_edges = 0;
+    int maintained_variant_edges = 0;
 
     while(!IGRAPH_EIT_END(eit)){
 
         int eid = IGRAPH_EIT_GET(eit);
         int variant = igraph_cattribute_EAN(&variation_graph, "variant", eid);
-        if(variant < 0 || (variant >= 0 && solution[variant] == 0)){
-            maintained_edges++;
+        if(variant >= 0 && solution[variant] == 0){
+            maintained_variant_edges++;
+        }else if (variant >= 0 && solution[variant] != 0){
+            total_variant_edges++;
         }
 
-        total_edges++;
         IGRAPH_EIT_NEXT(eit);
     }
     igraph_es_destroy(&es);
     igraph_eit_destroy(&eit);
 
-    cout << "Maintained " << maintained_edges << " out of " << total_edges << " edges.\n" << endl;
+    cout << "Maintained " << maintained_variant_edges << " out of " << total_variant_edges << " variant edges.\n" << endl;
 }
