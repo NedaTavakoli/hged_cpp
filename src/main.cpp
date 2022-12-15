@@ -50,7 +50,7 @@ void print_variation_graph(const igraph_t *graph){
 }
 
 
-void print_alignment_graph(const igraph_t *graph){
+void print_alignment_graph(igraph_t *graph){
 
     cout << "\nPrinting alignment graph:" << endl;
     cout << "pos = " << igraph_cattribute_GAN(graph, "position")
@@ -675,6 +675,7 @@ void analyze_alignment_graph_set(vector<igraph_t>& alignment_graphs,
                                 vector<int>& subILP_to_component,
                                 vector<int>& global_variable_to_local_idx,
                                 vector<int>& component_to_global_variable_count,
+                                vector<vector<int>>& component_to_subILPs,
                                 int* num_components
                                 ){
     
@@ -744,8 +745,10 @@ void analyze_alignment_graph_set(vector<igraph_t>& alignment_graphs,
 
 
     component_to_global_variable_count = vector<int>(*num_components, 0);
+    component_to_subILPs = vector<vector<int>>(*num_components);
     for (auto size : sizes){
         component_to_global_variable_count[size.first] = size.second;
+        component_to_subILPs[size.first] = vector<int>();
     }
 
     // clean up
@@ -770,12 +773,14 @@ void analyze_alignment_graph_set(vector<igraph_t>& alignment_graphs,
         cout << "component_" << i << " has variants: " << component_to_global_variable_count[i] << endl;
     }
 
-    //cout << "\nComponent to total binary variable count" << endl;
+
     unordered_map<int, int> component_to_num_edges;
     for(int i = 0; i < alignment_graphs.size(); i++){
         
         igraph_t g = alignment_graphs.at(i);
         int component = subILP_to_component[i];
+
+        component_to_subILPs[component].push_back(i);
 
         if(component_to_num_edges.find(component) == component_to_num_edges.end()){
             component_to_num_edges[component] = igraph_ecount(&g);
@@ -789,14 +794,16 @@ void analyze_alignment_graph_set(vector<igraph_t>& alignment_graphs,
 }
 
 
-void construct_ILPs(vector<igraph_t>& alignment_graphs, 
-                    vector<int>& subILP_to_component,
+void construct_ILPs(vector<igraph_t>& alignment_graphs,
+                    int component,
+                    vector<vector<int>>& component_to_subILPs,
                     vector<int>& global_variable_to_local_idx,
                     vector<int>& component_to_global_variable_count,
-                    vector<GRBModel>& models,
+                    GRBModel& model,
                     int delta
                     ){
 
+    /*
     // add variant boolean variables and objective to each
     vector<GRBVar*> global_var_for_model = vector<GRBVar*>(models.size());
 
@@ -810,7 +817,16 @@ void construct_ILPs(vector<igraph_t>& alignment_graphs,
         //addTerms
         models[i].setObjective(obj, GRB_MAXIMIZE);
     }
-    
+    */
+
+    GRBVar* global_var = model.addVars(component_to_global_variable_count[component]);
+
+    GRBLinExpr obj = GRBLinExpr();
+    for(int i = 0; i < component_to_global_variable_count[component]; i++){
+        obj += global_var[i];
+    }
+    model.setObjective(obj, GRB_MAXIMIZE);
+
     /*
     vector<int> current_variable_start_index = vector<int>(models.size());
     for(int i = 0; i < models.size(); i++){
@@ -818,28 +834,30 @@ void construct_ILPs(vector<igraph_t>& alignment_graphs,
     }
     */
 
-    for(int i = 0; i < alignment_graphs.size(); i++){
-      
+    cout << "component "<< component << "   size(number of alignment graphs): " << component_to_subILPs[component].size() << endl;
+    for(int i = 0; i < component_to_subILPs[component].size(); i++){
 
         auto start = chrono::steady_clock::now();
 
+        int alignment_graph_idx = component_to_subILPs[component][i];
+
         // the number of variables that are added is equal to the number of edges
-        int model_id = subILP_to_component[i];
+        //int model_id = subILP_to_component[i];
 
         if(VERBOSE){
-            cout << "Alignment_graph_" << i << " ILP construction in component (model): " << model_id << endl;
-        }else if(!VERBOSE && i % 100 == 0){
-            cout << "Constructing ILP for alignment_graph: " << i << " out of " << alignment_graphs.size() << " (increments of 100)" << endl;
+            cout << "Alignment_graph_" << i << " ILP construction in component (model): " << component << endl;
+        }else if(!VERBOSE && i % 1 == 0){
+            cout << "Constructing ILP for alignment_graph: " << i << " out of " << component_to_subILPs[component].size() << " (increments of 1)" << endl;
         }
 
-        GRBVar* local_var = models[model_id].addVars(igraph_ecount(&alignment_graphs[i]), GRB_BINARY);
+        GRBVar* local_var = model.addVars(igraph_ecount(&alignment_graphs[alignment_graph_idx]), GRB_BINARY);
 
         igraph_vs_t vs;
         igraph_vit_t vit;
         igraph_bool_t loops = true;     // there are no loops, this is to get const. query time for degrees
 
         igraph_vs_all(&vs);
-        igraph_vit_create(&alignment_graphs[i], vs, &vit);
+        igraph_vit_create(&alignment_graphs[alignment_graph_idx], vs, &vit);
         
         
         while (!IGRAPH_VIT_END(vit)) {
@@ -847,8 +865,8 @@ void construct_ILPs(vector<igraph_t>& alignment_graphs,
             int vid = IGRAPH_VIT_GET(vit);
             
             igraph_integer_t in_degree, out_degree;
-            igraph_degree_1(&alignment_graphs[i], &in_degree, vid, IGRAPH_IN, loops);
-            igraph_degree_1(&alignment_graphs[i], &out_degree, vid, IGRAPH_OUT, loops);
+            igraph_degree_1(&alignment_graphs[alignment_graph_idx], &in_degree, vid, IGRAPH_IN, loops);
+            igraph_degree_1(&alignment_graphs[alignment_graph_idx], &out_degree, vid, IGRAPH_OUT, loops);
 
             /*
             cout << "graph: " << i << " vertex: " << vid 
@@ -859,31 +877,31 @@ void construct_ILPs(vector<igraph_t>& alignment_graphs,
             */
 
             GRBLinExpr lhs, rhs;
-            if(igraph_cattribute_VAN(&alignment_graphs[i], "start_end", vid) == 1){
+            if(igraph_cattribute_VAN(&alignment_graphs[alignment_graph_idx], "start_end", vid) == 1){
                 lhs = GRBLinExpr(1);
                 rhs = GRBLinExpr();
 
                 // iterate through outbound edges
                 igraph_vector_int_t edges;
                 igraph_vector_int_init(&edges, 0);
-                igraph_incident(&alignment_graphs[i], &edges, vid, IGRAPH_OUT);
+                igraph_incident(&alignment_graphs[alignment_graph_idx], &edges, vid, IGRAPH_OUT);
                 int m = igraph_vector_int_size(&edges);
-                for(int i = 0; i < m; i++){
-                    rhs += local_var[igraph_vector_int_get(&edges, i)];
+                for(int j = 0; j < m; j++){
+                    rhs += local_var[igraph_vector_int_get(&edges, j)];
                 }
                 igraph_vector_int_destroy(&edges);
 
-            }else if(igraph_cattribute_VAN(&alignment_graphs[i], "start_end", vid) == 2){
+            }else if(igraph_cattribute_VAN(&alignment_graphs[alignment_graph_idx], "start_end", vid) == 2){
                 lhs = GRBLinExpr();
                 rhs = GRBLinExpr(1);
 
                 // iterate through inbound edges
                 igraph_vector_int_t edges;
                 igraph_vector_int_init(&edges, 0);
-                igraph_incident(&alignment_graphs[i], &edges, vid, IGRAPH_IN);
+                igraph_incident(&alignment_graphs[alignment_graph_idx], &edges, vid, IGRAPH_IN);
                 int m = igraph_vector_int_size(&edges);
-                for(int i = 0; i < m; i++){
-                    lhs += local_var[igraph_vector_int_get(&edges, i)];
+                for(int j = 0; j < m; j++){
+                    lhs += local_var[igraph_vector_int_get(&edges, j)];
                 }
                 igraph_vector_int_destroy(&edges);                
 
@@ -895,24 +913,24 @@ void construct_ILPs(vector<igraph_t>& alignment_graphs,
                 igraph_vector_int_init(&edges, 0);
 
                 // iterate through in bound edges
-                igraph_incident(&alignment_graphs[i], &edges, vid, IGRAPH_IN);
+                igraph_incident(&alignment_graphs[alignment_graph_idx], &edges, vid, IGRAPH_IN);
                 int m = igraph_vector_int_size(&edges);
-                for(int i = 0; i < m; i++){
-                    lhs += local_var[igraph_vector_int_get(&edges, i)];
+                for(int j = 0; j < m; j++){
+                    lhs += local_var[igraph_vector_int_get(&edges, j)];
                 }
 
                 // iterate through outbound edges
-                igraph_incident(&alignment_graphs[i], &edges, vid, IGRAPH_OUT);
+                igraph_incident(&alignment_graphs[alignment_graph_idx], &edges, vid, IGRAPH_OUT);
                 m = igraph_vector_int_size(&edges);
-                for(int i = 0; i < m; i++){
-                    rhs += local_var[igraph_vector_int_get(&edges, i)];
+                for(int j = 0; j < m; j++){
+                    rhs += local_var[igraph_vector_int_get(&edges, j)];
                 }
 
                 igraph_vector_int_destroy(&edges);  
 
             }
 
-            models[model_id].addConstr(lhs, GRB_EQUAL, rhs);
+            model.addConstr(lhs, GRB_EQUAL, rhs);
             IGRAPH_VIT_NEXT(vit);
         }
 
@@ -923,29 +941,29 @@ void construct_ILPs(vector<igraph_t>& alignment_graphs,
         igraph_es_t es;
         igraph_eit_t eit;
         igraph_es_all(&es, IGRAPH_EDGEORDER_ID);
-        igraph_eit_create(&alignment_graphs[i], es, &eit);
+        igraph_eit_create(&alignment_graphs[alignment_graph_idx], es, &eit);
 
         GRBLinExpr delta_constraint_rhs = GRBLinExpr(delta);
         GRBLinExpr delta_constraint_lhs = GRBLinExpr();
 
         while(!IGRAPH_EIT_END(eit)){
             int eid = IGRAPH_EIT_GET(eit);
-            int variant = igraph_cattribute_EAN(&alignment_graphs[i], "variant", eid);
+            int variant = igraph_cattribute_EAN(&alignment_graphs[alignment_graph_idx], "variant", eid);
             if(variant >= 0){
                 int idx = global_variable_to_local_idx[variant];
 
                 GRBLinExpr lhs = GRBLinExpr();
-                lhs += global_var_for_model[model_id][idx];
+                lhs += global_var[idx];
                 lhs += local_var[eid];
                 GRBLinExpr rhs = GRBLinExpr(1);
-                models[model_id].addConstr(lhs, GRB_LESS_EQUAL, rhs);
+                model.addConstr(lhs, GRB_LESS_EQUAL, rhs);
             }
 
-            delta_constraint_lhs += igraph_cattribute_EAN(&alignment_graphs[i], "weight", eid)*local_var[eid];
+            delta_constraint_lhs += igraph_cattribute_EAN(&alignment_graphs[alignment_graph_idx], "weight", eid)*local_var[eid];
             IGRAPH_EIT_NEXT(eit);
         }
 
-        models[model_id].addConstr(delta_constraint_lhs, GRB_LESS_EQUAL, delta_constraint_rhs);
+        model.addConstr(delta_constraint_lhs, GRB_LESS_EQUAL, delta_constraint_rhs);
 
         igraph_es_destroy(&es);
         igraph_eit_destroy(&eit);
@@ -954,18 +972,16 @@ void construct_ILPs(vector<igraph_t>& alignment_graphs,
         if(VERBOSE){
             auto stop = chrono::steady_clock::now();
             auto duration = duration_cast<chrono::milliseconds>(stop - start);
-            cout << "\tTime for alignment_graph_" << i << " ILP construction: " << duration.count() << " milliseconds" 
-                " component (model): " << model_id << endl;
+            cout << "\tTime for alignment_graph_" << alignment_graph_idx << " ILP construction: " << duration.count() << " milliseconds" 
+                " component (model): " << component << endl;
         }
     }
 
     // update and view models for checking
-    for(int i = 0; i < models.size(); i++){
-        models[i].update();
-        if(WRITE_ILPS_TO_FILE){
-            string file_name = "model_" + to_string(i) + ".lp";
-            models[i].write(file_name);
-        }
+    model.update();
+    if(WRITE_ILPS_TO_FILE){
+        string file_name = "model_" + to_string(component) + ".lp";
+        model.write(file_name);
     }
     
 }
@@ -1044,6 +1060,7 @@ int main(int argc, char** argv){
     vector<int> subILP_to_component;
     vector<int> global_variable_to_local_idx;
     vector<int> component_to_variant_count;
+    vector<vector<int>> component_to_subILPs;
     int num_components;
     analyze_alignment_graph_set(alignment_graphs, 
                                 num_variants, 
@@ -1051,46 +1068,11 @@ int main(int argc, char** argv){
                                 subILP_to_component, 
                                 global_variable_to_local_idx, 
                                 component_to_variant_count,
+                                component_to_subILPs,
                                 &num_components);
 
     cout << "\n============= Alignment Graphs Analyzed =============\n" << endl;
     cout << "number of components: " << num_components << endl;
-
-
-    vector<GRBModel> models;
-    for(int i = 0; i < num_components; i++){
-        models.push_back(GRBModel(env));
-    }
-
-    cout << "\nConstructing ILP models from alignment graphs...\n" << endl;
-    construct_ILPs(alignment_graphs, 
-                    subILP_to_component, 
-                    global_variable_to_local_idx, 
-                    component_to_variant_count,
-                    models,
-                    delta);
-    
-    cout << "\n============= ILP models constructed =============\n" << endl;
-
-    cout << "Solving ILPs...\n" << endl;
-    for(int i = 0; i < models.size(); i++){
-
-        if(VERBOSE){
-            cout << "Solving ILP_" << i << "\n" <<endl;
-        }else if(!VERBOSE && i % 100 == 0){
-            cout << "Solving ILP_" << i << " out of " << models.size() << " (increments of 100)" << endl;
-        }
-        auto start = chrono::steady_clock::now();
-        models[i].optimize();
-
-        auto stop = chrono::steady_clock::now();
-        auto duration = duration_cast<chrono::milliseconds>(stop - start);
-        if(VERBOSE){
-            cout << "time: " << duration.count() << " milliseconds\n" <<endl;
-        }
-    }
-
-    cout << "\n============= ILP models solved =============\n" << endl;
 
     // we need to invert the map from seperate ILPs
     map<pair<int, int>, int> component_index_pair_to_variant;
@@ -1101,24 +1083,56 @@ int main(int argc, char** argv){
         if(component_index_pair_to_variant.find(p) == component_index_pair_to_variant.end()){
             component_index_pair_to_variant[p] = i;
         }
-        
     }
 
-    vector<int> solution = vector<int>(num_variants);
+    
+    cout << "\nConstructing ILP models from alignment graphs...\n" << endl;
 
-    for(int i = 0; i < models.size(); i++){
+    vector<int> solution = vector<int>(num_variants, 1);
+    for(int component = 0; component < num_components; component++){
 
-        GRBVar* vars = NULL;
-        vars = models[i].getVars();
-        cout << "ILP_" << i << " local assignments: " << endl;
-        cout << "variable count: " << component_to_variant_count[i] << endl;
-        for (int j = 0; j < component_to_variant_count[i]; j++) {
-            cout << vars[j].get(GRB_StringAttr_VarName) << " = " << vars[j].get(GRB_DoubleAttr_X) << endl;
-            solution[component_index_pair_to_variant[make_pair(i, j)]] = vars[j].get(GRB_DoubleAttr_X);
+        if(component_to_subILPs[component].size() > 0){
+
+            GRBModel model = GRBModel(env);
+
+            construct_ILPs(alignment_graphs,
+                            component,
+                            component_to_subILPs,
+                            global_variable_to_local_idx, 
+                            component_to_variant_count,
+                            model,
+                            delta);
+            cout << "\n============= ILP model "<< component << " constructed =============\n" << endl;
+            
+            if(VERBOSE){
+                cout << "Solving ILP_" << component << "\n" <<endl;
+            }else if(!VERBOSE && component % 100 == 0){
+                cout << "Solving ILP_" << component << " out of " <<  num_components << " (increments of 100)" << endl;
+            }
+
+            auto start = chrono::steady_clock::now();
+            model.optimize();
+
+            auto stop = chrono::steady_clock::now();
+            auto duration = duration_cast<chrono::milliseconds>(stop - start);
+            if(VERBOSE){
+                cout << "time: " << duration.count() << " milliseconds\n" <<endl;
+            }
+
+            //cout << "\n============= ILP models solved =============\n" << endl;
+
+            GRBVar* vars = NULL;
+            vars = model.getVars();
+            //cout << "ILP_" << component << " local assignments: " << endl;
+            //cout << "variable count: " << component_to_variant_count[component] << endl;
+            for (int j = 0; j < component_to_variant_count[component]; j++) {
+                //cout << vars[j].get(GRB_StringAttr_VarName) << " = " << vars[j].get(GRB_DoubleAttr_X) << endl;
+                solution[component_index_pair_to_variant[make_pair(component, j)]] = vars[j].get(GRB_DoubleAttr_X);
+            }
+            //cout << endl;
         }
-        cout << endl;
     }
-
+        
     int sum = 0;
     cout << "\nFinal assignment: " << endl;
     for(int i = 0; i < solution.size(); i++){
@@ -1151,4 +1165,5 @@ int main(int argc, char** argv){
     igraph_eit_destroy(&eit);
 
     cout << "Maintained " << maintained_variant_edges << " out of " << total_variant_edges << " variant edges.\n" << endl;
+    
 }
