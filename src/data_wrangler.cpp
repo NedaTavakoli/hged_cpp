@@ -86,7 +86,7 @@ void get_linear_backbone(const std::string &fasta_file, const int &chr, int &sta
     // seed random generator by time in seconds (this may create issue if two instances are launched at the same time)
     srand(time(0)); int random = rand() % 100000;  
     std::string tmp_file = ".linear_bc_chr" + std::to_string(chr) + "_" + std::to_string(random) + ".txt";
-    std::string cmd = std::string(TOSTRING(SAMTOOLSPATH)) + " faidx " +  fasta_file + " " + std::to_string(chr) + ":" + std::to_string(start_pos) + "-" + std::to_string(last_pos+1) + " >  " + tmp_file;
+    std::string cmd = std::string(TOSTRING(SAMTOOLSPATH)) + " faidx " +  fasta_file + " " + std::to_string(chr) + ":" + std::to_string(start_pos) + "-" + std::to_string(last_pos) + " >  " + tmp_file;
     std::cout << "INFO, hged::main, get linear backbone genome from fasta file using command: " << cmd << std::endl;
     std::system(cmd.c_str());
 
@@ -167,7 +167,14 @@ void get_linear_backbone(const std::string &fasta_file, const int &chr, int &sta
             pos_substrings[i.first].insert(s);
         }      
     }
-        pos_sub_file << std::to_string(i.first) + " " << pos_substrings[i.first] << std::endl;
+        pos_sub_file << std::to_string(i.first);
+        std::set<std::string>::iterator it;
+        for (it = pos_substrings[i.first].begin(); it != pos_substrings[i.first].end(); ++it) {
+            pos_sub_file << + " " << *it ;
+        } 
+        pos_sub_file << std::endl;
+        
+       // pos_sub_file << std::to_string(i.first) + " " << pos_substrings[i.first] << std::endl;
     }
   }
 
