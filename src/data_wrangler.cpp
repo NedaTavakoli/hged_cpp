@@ -40,7 +40,7 @@ void  extract_vcf_pos_ref_alt_sample_gt (const std::string &vcf_file, const std:
 {
    // seed random generator by time in seconds (this may create issue if two instances are launched at the same time)
     srand(time(0)); int random = rand() % 100000;  
-    std::string tmp_file = ".pos_ref_alt_sample_GT_chr_" + std::to_string(chr) + "_" + std::to_string(random) + ".txt";
+    std::string tmp_file = "pos_ref_alt_sample_GT_chr_" + std::to_string(chr) + "_" + std::to_string(random) + ".txt";
     std::string cmd = std::string(TOSTRING(BCFTOOLSPATH)) + " query -i \'(TYPE=\"snp\" || TYPE=\"indel\") && GT=\"alt\"\'" + " -f \'%POS\t%REF\t%ALT[\t%SAMPLE\t%GT]\n\'  "  + vcf_file + " >  " + tmp_file;
 
     std::cout << "INFO, hged::main, extracting pos, ref, alt, non-zero GT from vcf file using command: " << cmd << std::endl;
@@ -85,7 +85,7 @@ void get_linear_backbone(const std::string &fasta_file, const int &chr, int &sta
     // Extract linear backbone using samtools
     // seed random generator by time in seconds (this may create issue if two instances are launched at the same time)
     srand(time(0)); int random = rand() % 100000;  
-    std::string tmp_file = ".linear_bc_chr" + std::to_string(chr) + "_" + std::to_string(random) + ".txt";
+    std::string tmp_file = "linear_bc_chr" + std::to_string(chr) + "_" + std::to_string(random) + ".txt";
     std::string cmd = std::string(TOSTRING(SAMTOOLSPATH)) + " faidx " +  fasta_file + " " + std::to_string(chr) + ":" + std::to_string(start_pos) + "-" + std::to_string(last_pos) + " >  " + tmp_file;
     std::cout << "INFO, hged::main, get linear backbone genome from fasta file using command: " << cmd << std::endl;
     std::system(cmd.c_str());
@@ -109,7 +109,7 @@ void get_linear_backbone(const std::string &fasta_file, const int &chr, int &sta
 
     // seed random generator by time in seconds (this may create issue if two instances are launched at the same time)
     srand(time(0)); int random = rand() % 100000;  
-    std::string pos_sub = ".pos_sub_alpha_" +std::to_string(alpha) + "_" + std::to_string(random) + ".txt";
+    std::string pos_sub = "pos_sub_alpha_" +std::to_string(alpha) + "_" + std::to_string(random) + ".txt";
     std::cout << "INFO, hged::obtain_substring, extracting substrings per position and save to the file named: "  << pos_sub << std::endl;
 
     std::ofstream pos_sub_file (pos_sub);
@@ -182,7 +182,7 @@ void get_linear_backbone(const std::string &fasta_file, const int &chr, int &sta
     
     // seed random generator by time in seconds (this may create issue if two instances are launched at the same time)
     srand(time(0)); int random = rand() % 100000;  
-    std::string graph_file = ".graph_chr22_" + std::to_string(random) + ".txt";
+    std::string graph_file = "graph_chr22_" + std::to_string(random) + ".txt";
     std::cout << "INFO, hged::construct graph, constructing graph file: "  << graph_file << std::endl;
 
     std::ofstream graph_file_name (graph_file);
