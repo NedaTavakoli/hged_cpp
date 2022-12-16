@@ -126,33 +126,41 @@ void get_linear_backbone(const std::string &fasta_file, const int &chr, int &sta
        
         sample = boost::get<2> (i.second.at(j));
 
-        std::string alt = boost::get<3> (i.second.at(j));
-        if( (alt.compare(0, 1, "0") != 0) || (alt.compare(2, 1, "0") != 0) ){
+        std::string GT = boost::get<3> (i.second.at(j));
+
+        for (int hap = 0; hap < 2; hap++) {
+        if( (hap == 0 && (GT.compare(0, 1, "0") != 0)) || (hap == 1 && (GT.compare(2, 1, "0")) != 0) ){
 
           int current_pos = i.first ;
+          
           std::string s = " ";
           bool sample_found_at_pos;
           std::string alt_choice;
         
-          while (current_pos < final_pos && s.size() < alpha+1){
+          while (current_pos < final_pos +1 && s.size() < alpha+1){
             if (tl.find(current_pos) != tl.end())  { // the position exists in the unordered map
-                sample_found_at_pos = false;
-                std::string sam = boost::get<2> (i.second.at(j));
+               sample_found_at_pos = false;
+               std::map<int, Value_type>::iterator i2 = tl.find(current_pos);  // find the index of the current pos in map
+               for (std::vector<value_elemet>::size_type t =0 ; t < i2->second.size() ; ++t){
+                std::string sam = boost::get<2> (i2->second.at(t));
                 if (sam.compare(sample) == 0) {
-                  std::string gt = boost::get<3> (i.second.at(j));
-                  if (gt.compare(0,1,"0") != 0) 
+                  std::string gt = boost::get<3> (i2->second.at(t));
+                 // if (gt.compare(0,1,"0") != 0) 
+                  if (hap == 0 && (gt.compare(0,1,"0") != 0) ) 
                     alt_choice = gt.substr(0,1);
-                  if (gt.compare(2,1,"0") != 0) 
+                  // if (gt.compare(2,1,"0") != 0) 
+                  if (hap ==1 && (gt.compare(2,1,"0") != 0) ) 
                     alt_choice = gt.substr(2,1); 
                    if (alt_choice.compare("0") !=0){
                     std::vector<std::string> alt_splited;
                     std::vector<std::string>::iterator it;
-                    boost::split(alt_splited, boost::get<1> (i.second.at(j)), boost::is_any_of(",")); //split ALT over comma, save to a vector
+                    boost::split(alt_splited, boost::get<1> (i2->second.at(t)), boost::is_any_of(",")); //split ALT over comma, save to a vector
                     s += alt_splited[atoi(alt_choice.c_str())-1];
-                    current_pos +=  (boost::get<0> (i.second.at(j))).size(); // add reference length
+                    current_pos +=  (boost::get<0> (i2->second.at(t))).size(); // add reference length
                     sample_found_at_pos = true;
                    }  
                  }
+               }
 
                 if (sample_found_at_pos == false){
                   s += backbone_seq.substr(current_pos-start_pos, 1);
@@ -166,8 +174,9 @@ void get_linear_backbone(const std::string &fasta_file, const int &chr, int &sta
           }
             pos_substrings[i.first].insert(s);
         }      
-    }
-        pos_sub_file << std::to_string(i.first);
+        }
+      }
+        pos_sub_file << std::to_string(i.first - start_pos);
         std::set<std::string>::iterator it;
         for (it = pos_substrings[i.first].begin(); it != pos_substrings[i.first].end(); ++it) {
             pos_sub_file << + " " << *it ;
