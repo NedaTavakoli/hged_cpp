@@ -1103,8 +1103,9 @@ int main(int argc, char** argv){
     string edge_file_name = argv[1];
     string pos_substring_file_name = argv[2];
     string scratch_directory = argv[3];
-    int alpha = atoi(argv[4]);
-    int delta = atoi(argv[5]);
+    string sol_directory = argv[4];
+    int alpha = atoi(argv[5]);
+    int delta = atoi(argv[6]);
 
     igraph_set_attribute_table(&igraph_cattribute_table);
 
@@ -1270,10 +1271,16 @@ int main(int argc, char** argv){
         
     int sum = 0;
     cout << "\nFinal assignment: " << endl;
+
+
+    string sol_file_name = sol_directory + "ILP_sol_" + to_string(alpha) + "_" + to_string(delta) + "_" + to_string(N);
+    ofstream out_file(sol_file_name);
     for(int i = 0; i < solution.size(); i++){
         cout << "x_" << i << " = " << solution[i] << endl;
+        out_file << solution[i] << endl;
         sum += solution[i];
     }
+    out_file.close();
     cout << "\nNumber of variants deleted: " << sum << " out of " << num_variants <<endl;
 
     /*
