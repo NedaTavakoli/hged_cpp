@@ -22,15 +22,15 @@
 
 using boost::tuple;
 
-using value_elemet = boost::tuple<std::string, std::string, std::string, std::string>;
+using value_elemet = boost::tuple<int, std::string, std::string, std::string, std::string>;
 using Value_type = std::vector<value_elemet>;
 typedef std::map<int, Value_type> tuple_list;
 
 /**
  * @brief   Extract POS, REF, ALT, SAMPLe, GT, from the vcf and fasta file
  *          Input:  vcf file, reference fasta file, chr, first variant position, last variant position, list of variant positions
- *          Output: tuple_list contains is a dictionary with key as variant position and value is a list of tuples containing (REF, ALT, SAMPLE, GT)
- *          the form of the output is {POS_1:[(REF, ALT, SAMPLE, GT), (REF, ALT, SAMPLE, GT),.... ], POS_2, [(REF, ALT, SAMPLE, GT), (REF, ALT, SAMPLE, GT),.... ],....}
+ *          Output: tuple_list contains is a dictionary with key as variant position and value is a list of tuples containing (POS, REF, ALT, SAMPLE, GT)
+ *          the form of the output is {index_1:[(POS, REF, ALT, SAMPLE, GT), (POS, REF, ALT, SAMPLE, GT),.... ], index_2, [(POS, REF, ALT, SAMPLE, GT), (POS, REF, ALT, SAMPLE, GT),.... ],....}
  *
  */
 void extract_vcf_pos_ref_alt_sample_gt(const std::string &vcf_file, const std::string &fasta_file, const int &chr,
@@ -50,6 +50,7 @@ void extract_vcf_pos_ref_alt_sample_gt(const std::string &vcf_file, const std::s
     std::string REF, ALT;
     std::string sample;
     std::string gt;
+    int i = 0;
 
     while (std::getline(file, line))
     {
@@ -57,14 +58,12 @@ void extract_vcf_pos_ref_alt_sample_gt(const std::string &vcf_file, const std::s
         int pos;
         iss >> pos >> REF >> ALT;
 
-        if (line.size() > 0)
+        variant_positions.push_back(pos);
+        while (iss >> sample >> gt)
         {
-            variant_positions.push_back(pos);
-            while (iss >> sample >> gt)
-            {
-                tl[pos].push_back(boost::make_tuple(REF, ALT, sample, gt));
-            }
+            tl[i].push_back(boost::make_tuple(pos, REF, ALT, sample, gt));
         }
+        i +=1;
     }
 
     start_pos = variant_positions.front();
@@ -102,13 +101,13 @@ void get_linear_backbone(const std::string &fasta_file, const int &chr, int &sta
     backbone_seq = content;
 }
 
-void obtain_substrings(std::string &backbone_seq, int &start_pos, const int &alpha, tuple_list &tl)
+void obtain_substrings(std::string &backbone_seq, int &start_pos, const int &alpha, tuple_list &tl, const int &chr, std::vector<int> &variant_positions)
 {
 
     // seed random generator by time in seconds (this may create issue if two instances are launched at the same time)
     srand(time(0));
     int random = rand() % 100000;
-    std::string pos_sub = "pos_sub_alpha_" + std::to_string(alpha) + "_" + std::to_string(random) + ".txt";
+    std::string pos_sub = "pos_sub_alpha_" + std::to_string(alpha) + "_" + "chr" + std::to_string(chr) + "_" + std::to_string(random) + ".txt";
     std::cout << "INFO, hged::obtain_substring, extracting substrings per position and save to the file named: " << pos_sub << std::endl;
 
     std::ofstream pos_sub_file(pos_sub);
@@ -116,49 +115,62 @@ void obtain_substrings(std::string &backbone_seq, int &start_pos, const int &alp
     std::map<int, std::set<std::string>> pos_substrings;
 
     int final_pos = start_pos + backbone_seq.size();
+    std::cout << "Final Position is " << final_pos << std::endl;
     std::string sample;
     std::string s;
+    int count = 0;
+    int pos, current_pos;
+    int index;
 
     for (const auto &i : tl)
     {
+        pos = boost::get<0>(i.second.at(0));
         for (std::vector<value_elemet>::size_type j = 0; j < i.second.size(); ++j)
         {
-            sample = boost::get<2>(i.second.at(j));
-            std::string GT = boost::get<3>(i.second.at(j));
-
+            sample = boost::get<3>(i.second.at(j));
+            std::string GT = boost::get<4>(i.second.at(j));
+            pos = boost::get<0>(i.second.at(j));
+           
             for (int hap = 0; hap < 2; hap++)
             {
                 if ((hap == 0 && (GT.compare(0, 1, "0") != 0)) || (hap == 1 && (GT.compare(2, 1, "0")) != 0))
                 {
-                    int current_pos = i.first;
-                    std::string s = " ";
+                    current_pos = pos;
+                    s = " ";
                     bool sample_found_at_pos;
                     std::string alt_choice;
-
-                    while (current_pos < final_pos + 1 && s.size() < alpha + 1)
+                    while (current_pos < final_pos  && s.size() < alpha +1)
                     {
-                        if (tl.find(current_pos) != tl.end()) // the position exists in the unordered map
+                        // check if the position exists in the variant position
+                        if (std::find(variant_positions.begin(), variant_positions.end(), current_pos)!=variant_positions.end()) // the position exists in the map
                         {
+                            int index_of_current_pos = current_pos - start_pos;
                             sample_found_at_pos = false;
-                            std::map<int, Value_type>::iterator i2 = tl.find(current_pos); // find the index of the current pos in map
+
+                            auto ii = find(variant_positions.begin(), variant_positions.end(), current_pos); // find the index of the current pos in variant positions 
+                            if (ii != variant_positions.end()) index = ii - variant_positions.begin();
+                            
+                            std::map<int, Value_type>::iterator i2 = tl.find(index); // find the index of the current pos in map
                             for (std::vector<value_elemet>::size_type t = 0; t < i2->second.size(); ++t)
                             {
-                                std::string sam = boost::get<2>(i2->second.at(t));
+                                std::string sam = boost::get<3>(i2->second.at(t));
                                 if (sam.compare(sample) == 0)
                                 {
-                                    std::string gt = boost::get<3>(i2->second.at(t));
-                                    if (hap == 0)
+                                    std::string gt = boost::get<4>(i2->second.at(t));
+                                    if (hap == 0){
                                         alt_choice = gt.substr(0, 1);
-                                    if (hap == 1)
+                                    }
+                                    if (hap == 1){
                                         alt_choice = gt.substr(2, 1);
+                                    }
                                     if (alt_choice.compare("0") != 0)
                                     {
                                         std::vector<std::string> alt_splited;
-                                        boost::split(alt_splited, boost::get<1>(i2->second.at(t)), boost::is_any_of(",")); // split ALT over comma, save to a vector
-                                        s += alt_splited[atoi(alt_choice.c_str()) - 1];
-                                        current_pos += (boost::get<0>(i2->second.at(t))).size(); // add reference length
+                                        boost::split(alt_splited, boost::get<2>(i2->second.at(t)), boost::is_any_of(",")); // split ALT over comma, save to a vector
+                                        s += alt_splited[atoi(alt_choice.c_str())-1];
+                                        current_pos += (boost::get<1>(i2->second.at(t))).size(); // add reference length
                                         sample_found_at_pos = true;
-                                    }
+                                     }
                                 }
                             }
 
@@ -177,38 +189,40 @@ void obtain_substrings(std::string &backbone_seq, int &start_pos, const int &alp
                     // add to this positions set
                     if (s.size() < alpha + 1)
                     {
-                        pos_substrings[i.first].insert(s);
+                        pos_substrings[count].insert(s);
                     }
                     else
                     {
-                        pos_substrings[i.first].insert(s.substr(0, alpha + 1));
+                        pos_substrings[count].insert(s.substr(0, alpha + 1));
                     }
                 }
             }
         }
 
-        // wite to file
-        pos_sub_file << std::to_string(i.first - start_pos);
-        for (const auto &element : pos_substrings[i.first])
+
+        // write to file
+        pos_sub_file << std::to_string(pos - start_pos);
+        for (const auto &element : pos_substrings[count])
             pos_sub_file << +" " << element;
         pos_sub_file << std::endl;
+
+        count += 1;
     }
 }
 
-void construct_graph(std::string &backbone_seq, int &start_pos, int &last_pos, tuple_list &tl, std::vector<int> &variant_positions)
+void construct_graph(std::string &backbone_seq, int &start_pos, int &last_pos, tuple_list &tl, std::vector<int> &variant_positions, const int &chr )
 {
 
     // seed random generator by time in seconds (this may create issue if two instances are launched at the same time)
-    srand(time(0));
+     srand(time(0));
     int random = rand() % 100000;
-    std::string graph_file = "graph_chr22_" + std::to_string(random) + ".txt";
+    std::string graph_file =  "graph_chr" + std::to_string(chr) + "_" + std::to_string(random) + ".txt";
     std::cout << "INFO, hged::construct graph, constructing graph file: " << graph_file << std::endl;
 
     std::ofstream graph_file_name(graph_file);
 
     for (int i = 0; i < backbone_seq.size(); ++i)
     {
-
         // add backbone edges
         graph_file_name << std::to_string(start_pos + i - start_pos) + " " + std::to_string(start_pos + i + 1 - start_pos) + " " + backbone_seq[i] + " " + "-" << std::endl;
     }
@@ -221,15 +235,10 @@ void construct_graph(std::string &backbone_seq, int &start_pos, int &last_pos, t
     std::string ref;
     std::map<int, Value_type>::iterator it = tl.begin();
 
-    for (auto i = tl.begin(); i != tl.end(); i++)
-    {
+    for (auto i = tl.begin(); i != tl.end(); i++){
 
-        // get the index of the variant position POS i.first
-        auto it = find(variant_positions.begin(), variant_positions.end(), i->first);
-        int index = it - variant_positions.begin();
-
-        alt = boost::get<1>(i->second.at(0));
-        ref = boost::get<0>(i->second.at(0));
+        alt = boost::get<2>(i->second.at(0));
+        ref = boost::get<1>(i->second.at(0));
 
         std::vector<std::string> alt_split_by_comma;
         boost::split(alt_split_by_comma, alt, boost::is_any_of(","));
@@ -242,7 +251,7 @@ void construct_graph(std::string &backbone_seq, int &start_pos, int &last_pos, t
             {
                 if (k == 0)
                 {
-                    start = i->first;
+                    start = boost::get<0>(i->second.at(0));
                 }
                 else
                 {
@@ -251,7 +260,7 @@ void construct_graph(std::string &backbone_seq, int &start_pos, int &last_pos, t
 
                 if (k == (strlen(alt_splited) - 1))
                 {
-                    end = i->first + ref.size();
+                    end = boost::get<0>(i->second.at(0))+ ref.size();
                 }
                 else
                 {
@@ -261,6 +270,7 @@ void construct_graph(std::string &backbone_seq, int &start_pos, int &last_pos, t
                 graph_file_name << std::to_string(start - start_pos) + " " + std::to_string(end - start_pos) + " " + alt_splited[k] + " " + std::to_string(index) << std::endl;
             }
         }
+        index +=1;
     }
 }
 
@@ -281,11 +291,11 @@ int main(int argc, char **argv)
 
     extract_vcf_pos_ref_alt_sample_gt(parameters.vcffile, parameters.fasta_ref_file, parameters.chr, start_pos,
                                       last_pos, variant_positions, tl);
-
-    last_pos = last_pos + (boost::get<0>(tl[last_pos].at(0))).size();
+    int len = variant_positions.size();
+    last_pos = last_pos + (boost::get<1>(tl[len -1].at(0))).size();
     get_linear_backbone(parameters.fasta_ref_file, parameters.chr, start_pos, last_pos, backbone_seq);
-    obtain_substrings(backbone_seq, start_pos, parameters.alpha, tl);
-    construct_graph(backbone_seq, start_pos, last_pos, tl, variant_positions);
+    obtain_substrings(backbone_seq, start_pos, parameters.alpha, tl, parameters.chr, variant_positions);
+    construct_graph(backbone_seq, start_pos, last_pos, tl, variant_positions, parameters.chr);
 
     return 0;
 }
