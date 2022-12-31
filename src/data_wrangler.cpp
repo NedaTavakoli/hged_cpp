@@ -145,20 +145,16 @@ void obtain_substrings(std::string &backbone_seq, int &start_pos, const int &alp
                     {   
                         std::map<int, Value_type>::iterator i2 = tl.find(current_pos); // find the index of the current pos in map
                         if (i2 != tl.end()) // the position exists in the  map
-                        // if (tl.find(current_pos) != tl.end()) // the position exists in the  map
                         {
                             sample_found_at_pos = false;
-                            // std::map<int, Value_type>::iterator i2 = tl.find(current_pos); // find the index of the current pos in map
                             for (std::vector<value_elemet>::size_type t = 0; t < i2->second.size(); ++t)
                             {
                                 std::string sam = boost::get<2>(i2->second.at(t));
                                 if (sam.compare(sample) == 0)
                                 {
                                     std::string gt = boost::get<3>(i2->second.at(t));
-                                    if (hap == 0)
-                                        alt_choice = gt.substr(0, 1);
-                                    if (hap == 1)
-                                        alt_choice = gt.substr(2, 1);
+                                    if (hap == 0) alt_choice = gt.substr(0, 1);
+                                    if (hap == 1) alt_choice = gt.substr(2, 1);
                                     if (alt_choice.compare("0") != 0)
                                     {
                                         std::vector<std::string> alt_splited;
@@ -195,7 +191,7 @@ void obtain_substrings(std::string &backbone_seq, int &start_pos, const int &alp
             }
         }
 
-        // wite to file
+        // write to file
         pos_sub_file << std::to_string(i.first - start_pos);
         for (const auto &element : pos_substrings[i.first])
             pos_sub_file << +" " << element;
@@ -216,7 +212,6 @@ void construct_graph(std::string &backbone_seq, int &start_pos, int &last_pos, t
 
     for (int i = 0; i < backbone_seq.size(); ++i)
     {
-
         // add backbone edges
         graph_file_name << std::to_string(start_pos + i - start_pos) + " " + std::to_string(start_pos + i + 1 - start_pos) + " " + backbone_seq[i] + " " + "-" << std::endl;
     }
@@ -248,21 +243,17 @@ void construct_graph(std::string &backbone_seq, int &start_pos, int &last_pos, t
 
             for (size_t k = 0; k < strlen(alt_splited); ++k) // for each element in alt
             {
-                if (k == 0)
-                {
+                if (k == 0){
                     start = i->first;
                 }
-                else
-                {
+                else{
                     start = new_vertex;
                 }
 
-                if (k == (strlen(alt_splited) - 1))
-                {
+                if (k == (strlen(alt_splited) - 1)) {
                     end = i->first + ref.size();
                 }
-                else
-                {
+                else{
                     new_vertex += 1;
                     end = new_vertex;
                 }
