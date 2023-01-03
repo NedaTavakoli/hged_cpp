@@ -1,4 +1,5 @@
 #include <iostream>
+#include <sstream>
 #include <vector>
 #include <fstream>
 #include <igraph.h>
@@ -267,16 +268,38 @@ void read_alignment_graph_from_file(igraph_t *graph, string file_name){
 }
 
 
+// void read_pos_substring_file(string pos_string_file_name, vector<int>& positions, vector<string>& substrings){
+//     ifstream infile(pos_string_file_name);
+
+//     int pos;
+//     string substring;
+//     while (infile >> pos >> substring){
+//         positions.push_back(pos);
+//         substrings.push_back(substring);
+//     }
+// }
+
 void read_pos_substring_file(string pos_string_file_name, vector<int>& positions, vector<string>& substrings){
     ifstream infile(pos_string_file_name);
+    string line;
 
-    int pos;
-    string substring;
-    while (infile >> pos >> substring){
-        positions.push_back(pos);
-        substrings.push_back(substring);
+    while (std::getline(infile, line)){
+
+        int pos;
+        string substring;
+        
+        istringstream iss(line); // separates line over spaces
+        iss >> pos;
+
+       if (line.size() > 0){
+            while (iss >> substring){
+                positions.push_back(pos);
+                substrings.push_back(substring); 
+            }
+        }
     }
 }
+
 
 
 void get_reachable_vertex(igraph_t* graph, igraph_vs_t vertex_selector, int dist, igraph_vector_int_list_t* reachable_list){
