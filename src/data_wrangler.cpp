@@ -108,13 +108,13 @@ void get_linear_backbone(const std::string &fasta_file, const int &chr, int &sta
     backbone_seq = content;
 }
 
-void obtain_substrings(std::string &backbone_seq, int &start_pos, const int &alpha, tuple_list &tl)
+void obtain_substrings(std::string &backbone_seq, int &start_pos, const int &alpha, tuple_list &tl, const int &chr)
 {
 
     // seed random generator by time in seconds (this may create issue if two instances are launched at the same time)
     srand(time(0));
     int random = rand() % 100000;
-    std::string pos_sub = "pos_sub_alpha_" + std::to_string(alpha) + "_" + std::to_string(random) + ".txt";
+    std::string pos_sub = "pos_sub_alpha_" + std::to_string(alpha) + "_chr" + std::to_string(chr) + "_" + std::to_string(random) + ".txt";
     std::cout << "INFO, hged::obtain_substring, extracting substrings per position and save to the file named: " << pos_sub << std::endl;
 
     std::ofstream pos_sub_file(pos_sub);
@@ -199,13 +199,13 @@ void obtain_substrings(std::string &backbone_seq, int &start_pos, const int &alp
     }
 }
 
-void construct_graph(std::string &backbone_seq, int &start_pos, int &last_pos, tuple_list &tl, std::vector<int> &variant_positions)
+void construct_graph(std::string &backbone_seq, int &start_pos, int &last_pos, tuple_list &tl, std::vector<int> &variant_positions, const int &chr)
 {
 
     // seed random generator by time in seconds (this may create issue if two instances are launched at the same time)
     srand(time(0));
     int random = rand() % 100000;
-    std::string graph_file = "graph_chr22_" + std::to_string(random) + ".txt";
+    std::string graph_file = "graph_chr" + std::to_string(chr) + "_" + std::to_string(random) + ".txt";
     std::cout << "INFO, hged::construct graph, constructing graph file: " << graph_file << std::endl;
 
     std::ofstream graph_file_name(graph_file);
@@ -283,8 +283,8 @@ int main(int argc, char **argv)
 
     last_pos = last_pos + (boost::get<0>(tl[last_pos].at(0))).size();
     get_linear_backbone(parameters.fasta_ref_file, parameters.chr, start_pos, last_pos, backbone_seq);
-    obtain_substrings(backbone_seq, start_pos, parameters.alpha, tl);
-    construct_graph(backbone_seq, start_pos, last_pos, tl, variant_positions);
+    obtain_substrings(backbone_seq, start_pos, parameters.alpha, tl, parameters.chr);
+    construct_graph(backbone_seq, start_pos, last_pos, tl, variant_positions, parameters.chr);
 
     return 0;
 }
