@@ -1269,6 +1269,7 @@ int main(int argc, char** argv){
             }
 
             auto start = chrono::steady_clock::now();
+            model.getEnv().set(GRB_DoubleParam_TimeLimit, 10800);  // Set a 2 second time limit
             model.optimize();
 
             //auto stop = chrono::steady_clock::now();
