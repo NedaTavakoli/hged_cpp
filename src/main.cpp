@@ -13,8 +13,8 @@
 
 #define VERBOSE false
 #define WRITE_ILPS_TO_FILE false
-#define PRINT_COMPONENT_SIZES false
-#define PRINT_FACTOR 200
+#define PRINT_COMPONENT_SIZES true
+#define PRINT_FACTOR 100
 
 using namespace std;
 
@@ -77,8 +77,9 @@ void print_alignment_graph(igraph_t *graph){
             igraph_edge(graph, igraph_vector_int_get(&edges, i), &start, &end);
             cout << "\t(" << start << ", " << end << ", " 
                 << "weight: " << igraph_cattribute_EAN(graph, "weight", igraph_vector_int_get(&edges, i)) << ", "
-                << "variant: " << igraph_cattribute_EAN(graph, "variant" , igraph_vector_int_get(&edges, i)) << ")" << endl; 
-            ;
+                << "variant: " << igraph_cattribute_EAN(graph, "variant" , igraph_vector_int_get(&edges, i)) << ", "
+                //<< "initsol: " << igraph_cattribute_EAN(graph, "initsol" , igraph_vector_int_get(&edges, i)) 
+                << ")" << endl; 
         }
         IGRAPH_VIT_NEXT(vit);
         cout << endl;
@@ -171,7 +172,8 @@ void write_alignment_graph_to_file(igraph_t *graph, string file_name){
         igraph_edge(graph, IGRAPH_EIT_GET(eit), &start, &end);
         int weight = igraph_cattribute_EAN(graph, "weight", IGRAPH_EIT_GET(eit));
         int variant = igraph_cattribute_EAN(graph, "variant", IGRAPH_EIT_GET(eit));
-        output += to_string(start) + " " + to_string(end) + " " + to_string(weight) + " " + to_string(variant) + "\n";
+        int initsol = igraph_cattribute_EAN(graph, "initsol", IGRAPH_EIT_GET(eit));
+        output += to_string(start) + " " + to_string(end) + " " + to_string(weight) + " " + to_string(variant) + " " + to_string(initsol) + "\n";
 
         if(igraph_cattribute_VAN(graph, "startend", start) == 1){
             source = start;
@@ -212,18 +214,20 @@ void read_alignment_graph_from_file(igraph_t *graph, string file_name){
     igraph_vector_int_t edges;
     igraph_vector_t weights;
     igraph_vector_t variants;
+    igraph_vector_t initsols;
 
     igraph_vector_int_init(&edges, 2*E);
     igraph_vector_init(&weights, E);
     igraph_vector_init(&variants, E);
+    igraph_vector_init(&initsols, E);
 
     int num_vertices = 0;
     int start, end; 
-    float weight, variant;
+    float weight, variant, initsol;
 
     int i = 0;
     int j = 0;
-    while (in_file >> start >> end >> weight >> variant){
+    while (in_file >> start >> end >> weight >> variant >> initsol){
         //cout << start << " " << end << " " << weight << " " << variant << endl;
        
         //edges[i] = start;
@@ -239,6 +243,8 @@ void read_alignment_graph_from_file(igraph_t *graph, string file_name){
 
         //variants[j] = variant;
         igraph_vector_set(&variants, j, variant);
+
+        igraph_vector_set(&initsols, j, initsol);
 
         j++;
 
@@ -258,26 +264,17 @@ void read_alignment_graph_from_file(igraph_t *graph, string file_name){
 
     igraph_cattribute_EAN_setv(graph, "weight", &weights);
     igraph_cattribute_EAN_setv(graph, "variant", &variants);
+    igraph_cattribute_EAN_setv(graph, "initsol", &initsols);
     igraph_cattribute_VAN_set(graph, "startend", start, 1);
     igraph_cattribute_VAN_set(graph, "startend", end, 2);
 
     igraph_vector_int_destroy(&edges);
     igraph_vector_destroy(&weights);
     igraph_vector_destroy(&variants);
+    igraph_vector_destroy(&initsols);
 
 }
 
-
-// void read_pos_substring_file(string pos_string_file_name, vector<int>& positions, vector<string>& substrings){
-//     ifstream infile(pos_string_file_name);
-
-//     int pos;
-//     string substring;
-//     while (infile >> pos >> substring){
-//         positions.push_back(pos);
-//         substrings.push_back(substring);
-//     }
-// }
 
 void read_pos_substring_file(string pos_string_file_name, vector<int>& positions, vector<string>& substrings){
     ifstream infile(pos_string_file_name);
@@ -299,7 +296,6 @@ void read_pos_substring_file(string pos_string_file_name, vector<int>& positions
         }
     }
 }
-
 
 
 void get_reachable_vertex(igraph_t* graph, igraph_vs_t vertex_selector, int dist, igraph_vector_int_list_t* reachable_list){
@@ -729,9 +725,10 @@ void create_pruned_alignment_graph(igraph_t* graph, string pattern, int delta, i
     igraph_cattribute_VAN_set(&forward_pruned_only_graph, "startend", source_vertex_id, 1);
     igraph_cattribute_VAN_set(&forward_pruned_only_graph, "startend", sink_vertex_id, 2);
 
+
     //cout << "============= Forward Prunned Alignment Graph Constructed =============" << endl;
     //print_alignment_graph(&forward_pruned_only_graph);
-
+    //cout << "Forward pruned alignment graph size: " << igraph_vcount(&forward_pruned_only_graph) << endl;
     // reverse pruning
 
     // get vertices reachable from the last vertex with distance at most delta
@@ -750,6 +747,65 @@ void create_pruned_alignment_graph(igraph_t* graph, string pattern, int delta, i
 } 
 
 
+void add_initial_solution(igraph_t* alignment_graph){
+
+    // get source and sink
+    int start_vertex = 0;
+    int end_vertex = 0;
+    igraph_vs_t vs;
+    igraph_vit_t vit;
+    igraph_vs_all(&vs);
+    igraph_vit_create(alignment_graph, vs, &vit);
+    while (!IGRAPH_VIT_END(vit)) {
+        int vid = IGRAPH_VIT_GET(vit);
+        int startend = (int)igraph_cattribute_VAN(alignment_graph, "startend", vid);
+        if(startend == 1){
+            start_vertex = vid;
+        }else if (startend == 2){
+            end_vertex = vid;
+        }
+        IGRAPH_VIT_NEXT(vit);
+    }
+    igraph_vs_destroy(&vs);
+    igraph_vit_destroy(&vit);
+
+
+    // get edge weights
+    igraph_es_t es;
+    igraph_es_all(&es, IGRAPH_EDGEORDER_ID);
+    igraph_vector_t weights;
+    igraph_vector_init(&weights, 0);
+    igraph_cattribute_EANV(alignment_graph, "weight", es, &weights);
+    igraph_es_destroy(&es);
+
+    // get path with minimum weight
+    igraph_vector_int_t path_edges;
+    igraph_vector_int_init(&path_edges, 0);
+    
+    //cout << "num vertex in graph: " << igraph_vcount(alignment_graph) << endl;
+    //cout << "start:" << start_vertex << " end vertex: " << end_vertex << endl;
+
+    igraph_get_shortest_path_dijkstra(alignment_graph, NULL, &path_edges, start_vertex, end_vertex, &weights, IGRAPH_OUT);
+    igraph_vector_destroy(&weights);
+
+    // put it in attribute vector
+    igraph_vector_t attribute_vector;
+    igraph_vector_init(&attribute_vector, igraph_ecount(alignment_graph));
+    int m = igraph_vector_int_size(&path_edges);
+    for(int i = 0; i < m; i++){
+        int eid = igraph_vector_int_get(&path_edges, i);
+        //int weight = igraph_cattribute_EAN(alignment_graph, "weight", eid);
+        //cout << "edge id: " << eid << " weight: " << weight << endl;
+        igraph_vector_set(&attribute_vector, eid, 1);
+    }
+    igraph_vector_int_destroy(&path_edges);
+
+    // set edge attrbitue
+    igraph_cattribute_EAN_setv(alignment_graph, "initsol", &attribute_vector);
+    igraph_vector_destroy(&attribute_vector);
+
+}
+
 void create_alignment_graph(igraph_t* variation_graph, int pos, string s, int alpha, int delta, igraph_t* alignment_graph){
     
     igraph_vs_t start_vertex_selector;
@@ -767,7 +823,15 @@ void create_alignment_graph(igraph_t* variation_graph, int pos, string s, int al
     igraph_t reachable_graph;
     get_induced_variation_graph(variation_graph, reachable_vertex, &reachable_graph);
     
+
+    //cout << "induced variation graph size: " << igraph_vcount(&reachable_graph) << endl;
+
+    int start_vertex, end_vertex;
     create_pruned_alignment_graph(&reachable_graph, s, delta, alignment_graph);
+
+    //cout << "pruned alignment graph size: " << igraph_vcount(alignment_graph) << endl;
+
+    add_initial_solution(alignment_graph);
 
     igraph_vector_int_list_destroy(&reachable_vertex_list);
     igraph_destroy(&reachable_graph);
@@ -941,12 +1005,14 @@ void construct_ILPs(int component,
     GRBLinExpr obj = GRBLinExpr();
     for(int i = 0; i < component_to_global_variable_count[component]; i++){
         obj += global_var[i];
+
+        global_var[i].set(GRB_DoubleAttr_Start, 0);
     }
     model.setObjective(obj, GRB_MAXIMIZE);
 
 
     if(PRINT_COMPONENT_SIZES){
-        cout << "component "<< component << "   size(number of alignment graphs): " << component_to_subILPs[component].size() << endl;
+        cout << "\nComponent "<< component << " has size (number of alignment graphs): " << component_to_subILPs[component].size() << endl;
     }
 
     for(int i = 0; i < component_to_subILPs[component].size(); i++){
@@ -1084,6 +1150,19 @@ void construct_ILPs(int component,
             }
 
             delta_constraint_lhs += igraph_cattribute_EAN(&alignment_graph, "weight", eid)*local_var[eid];
+
+
+            // added for feasibility check of initsol, delete afterward
+            /*
+            GRBLinExpr lhs = GRBLinExpr();
+            lhs += local_var[eid];
+            GRBLinExpr rhs = GRBLinExpr((int)igraph_cattribute_EAN(&alignment_graph, "initsol", eid));
+            model.addConstr(lhs, GRB_EQUAL, rhs);
+            */
+
+            local_var[eid].set(GRB_DoubleAttr_Start , (int)igraph_cattribute_EAN(&alignment_graph, "initsol", eid));
+
+
             IGRAPH_EIT_NEXT(eit);
         }
 
@@ -1194,7 +1273,6 @@ int main(int argc, char** argv){
         //igraph_write_graph_gml(&alignment_graph, file, IGRAPH_WRITE_GML_DEFAULT_SW, NULL, NULL);
         //fclose(file);
         
-        
         igraph_destroy(&alignment_graph);
     }
 
@@ -1244,7 +1322,7 @@ int main(int argc, char** argv){
     
     vector<int> solution = vector<int>(num_variants, 1);
 
-    #pragma omp parallel for
+    //#pragma omp parallel for
     for(int component = 0; component < num_components; component++){
 
         //cout << "component: " << component << endl; 
@@ -1262,14 +1340,12 @@ int main(int argc, char** argv){
                             );
             //cout << "\n============= ILP model "<< component << " constructed =============\n" << endl;
             
-            if(VERBOSE){
-                cout << "Solving ILP_" << component << "\n" <<endl;
-            }else if(!VERBOSE && component % PRINT_FACTOR == 0){
-                cout << "Solving ILP_" << component << " out of " <<  num_components << " (increments of " << PRINT_FACTOR << ")" << endl;
-            }
+
+            cout << "Solving ILP_" << component << " out of " <<  num_components << endl;
+            
 
             auto start = chrono::steady_clock::now();
-            model.getEnv().set(GRB_DoubleParam_TimeLimit, 10800);  // Set a 3 hours time limit
+            model.getEnv().set(GRB_DoubleParam_TimeLimit, 3600);
             model.optimize();
 
             //auto stop = chrono::steady_clock::now();
