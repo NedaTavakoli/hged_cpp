@@ -15,6 +15,7 @@
 #define WRITE_ILPS_TO_FILE false
 #define PRINT_COMPONENT_SIZES true
 #define PRINT_FACTOR 100
+#define ILP_TIME_LIMIT 3600 // in seconds
 
 using namespace std;
 
@@ -1218,10 +1219,7 @@ int main(int argc, char** argv){
     igraph_t variation_graph;
     int num_variants;
 
-    auto start = chrono::steady_clock::now();
     read_edge_file(edge_file_name, &variation_graph, &num_variants);
-    //auto stop = chrono::steady_clock::now();
-    //auto duration = duration_cast<chrono::milliseconds>(stop - start);
 
     cout << "\n============= Variation Graph Constructed =============\n" << endl;
     //cout << "Construction time: " << duration.count() << " milliseconds\n" <<endl;
@@ -1246,7 +1244,6 @@ int main(int argc, char** argv){
         }else if (!VERBOSE && i % PRINT_FACTOR == 0){
             cout << "Constructing alignment graph: " << i << " (increments of " << PRINT_FACTOR << ")" << endl;
         }
-        //auto start = chrono::steady_clock::now();
 
         igraph_t alignment_graph;
         create_alignment_graph(&variation_graph, positions[i], substrings[i], alpha, delta, &alignment_graph);
@@ -1263,11 +1260,6 @@ int main(int argc, char** argv){
         igraph_cattribute_GAN_set(&alignment_graph, "position", positions[i]);
         igraph_cattribute_GAS_set(&alignment_graph, "substring", substrings[i].c_str());
         
-        //if(VERBOSE){
-        //    auto stop = chrono::steady_clock::now();
-        //    auto duration = duration_cast<chrono::milliseconds>(stop - start);
-        //    cout << "time: " << duration.count() << " milliseconds\n" <<endl;
-        //}
 
         string file_name = scratch_directory + "g_" + to_string(i);
         
@@ -1326,6 +1318,8 @@ int main(int argc, char** argv){
     vector<int> solution = vector<int>(num_variants, 1);
 
     //#pragma omp parallel for
+
+    bool some_ILP_timed_out = false;
     for(int component = 0; component < num_components; component++){
 
         //cout << "component: " << component << endl; 
@@ -1346,14 +1340,16 @@ int main(int argc, char** argv){
 
             cout << "Solving ILP_" << component << " out of " <<  num_components << endl;
             
-
+            model.getEnv().set(GRB_DoubleParam_TimeLimit, ILP_TIME_LIMIT);
             auto start = chrono::steady_clock::now();
-            model.getEnv().set(GRB_DoubleParam_TimeLimit, 3600);
             model.optimize();
-
-            //auto stop = chrono::steady_clock::now();
-            //auto duration = duration_cast<chrono::milliseconds>(stop - start);
+            auto stop = chrono::steady_clock::now();
+            auto duration = duration_cast<chrono::seconds>(stop - start);
             
+            if(duration.count() > .95 * ILP_TIME_LIMIT){
+                cout << "ILP was timed out" << endl;
+                some_ILP_timed_out = true;
+            }
             //if(VERBOSE){
             //    cout << "time: " << duration.count() << " milliseconds\n" <<endl;
             //}
@@ -1385,6 +1381,11 @@ int main(int argc, char** argv){
     }
     out_file.close();
     cout << "\nNumber of variants deleted: " << sum << " out of " << num_variants <<endl;
+    if(some_ILP_timed_out){
+        cout << "Some ILP was timed-out, solution may be sub-optimal" << endl;
+    }else{
+        cout << "No ILPs were timed-out, solution is optimal" << endl;
+    }
 
     /*
     // needs variation_graph to not be destroyed (currently being destroyed to reduced memory)
