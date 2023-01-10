@@ -121,6 +121,8 @@ void read_edge_file(string edge_file_name, igraph_t* graph, int* num_variants){
             label = 2;
         }else if(edge_label == 'G'){
             label = 3;
+        }else if(edge_label == 'N'){
+            label = 4;
         }
 
         igraph_real_t variant;
@@ -592,7 +594,9 @@ void create_pruned_alignment_graph(igraph_t* graph, string pattern, int delta, i
                 if(    (pattern[u.y] == 'A' && sym == 0) 
                     || (pattern[u.y] == 'T' && sym == 1)
                     || (pattern[u.y] == 'C' && sym == 2)
-                    || (pattern[u.y] == 'G' && sym == 3)){
+                    || (pattern[u.y] == 'G' && sym == 3)
+                    || (pattern[u.y] == 'N' || sym == 4)
+                    ){
 
                     igraph_integer_t start, end;
                     igraph_edge(graph, igraph_vector_int_get(&incident_edges, i), &start, &end);
@@ -876,7 +880,6 @@ void analyze_alignment_graph_set(int num_variants,
 
     int ilp_idx = num_variants;
 
-    //for(auto &g: alignment_graphs){
     for(int i = 0; i < alignment_graph_to_variants.size(); i++){
         //print_alignment_graph(&g);
 
@@ -962,15 +965,9 @@ void analyze_alignment_graph_set(int num_variants,
         }
     }
 
-    // used to write on file
-    string varinats_per_component = "varinats_per_component.txt";
-    std::ofstream varinats_per_component_file(varinats_per_component);
-
     cout << "\nComponent to global variant count:\n" << endl;
     for(int i = 0; i < component_to_global_variable_count.size(); i++){
         cout << "component_" << i << " has variants: " << component_to_global_variable_count[i] << endl;
-        // write to file
-        varinats_per_component_file << component_to_global_variable_count[i] <<  std::endl;
     }
 
 
@@ -1243,7 +1240,7 @@ int main(int argc, char** argv){
     vector<vector<int>*> alignment_graph_to_variants = vector<vector<int>*>(N);
 
     #pragma omp parallel for
-    for(int i = 0; i < N; i++){    
+    for(int i = 0; i < N; i++){     
         if(VERBOSE){
             cout << "Constructing alignment graphs for position: " << positions[i] << endl;
         }else if (!VERBOSE && i % PRINT_FACTOR == 0){
@@ -1351,8 +1348,7 @@ int main(int argc, char** argv){
             
 
             auto start = chrono::steady_clock::now();
-            // time limit
-            // model.getEnv().set(GRB_DoubleParam_TimeLimit, 3600);
+            model.getEnv().set(GRB_DoubleParam_TimeLimit, 3600);
             model.optimize();
 
             //auto stop = chrono::steady_clock::now();
