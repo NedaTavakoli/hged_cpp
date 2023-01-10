@@ -962,9 +962,15 @@ void analyze_alignment_graph_set(int num_variants,
         }
     }
 
+    // used to write on file
+    string varinats_per_component = "varinats_per_component.txt";
+    std::ofstream varinats_per_component_file(varinats_per_component);
+
     cout << "\nComponent to global variant count:\n" << endl;
     for(int i = 0; i < component_to_global_variable_count.size(); i++){
         cout << "component_" << i << " has variants: " << component_to_global_variable_count[i] << endl;
+        // write to file
+        varinats_per_component_file << component_to_global_variable_count[i] <<  std::endl;
     }
 
 
@@ -1345,7 +1351,8 @@ int main(int argc, char** argv){
             
 
             auto start = chrono::steady_clock::now();
-            model.getEnv().set(GRB_DoubleParam_TimeLimit, 3600);
+            // time limit
+            // model.getEnv().set(GRB_DoubleParam_TimeLimit, 3600);
             model.optimize();
 
             //auto stop = chrono::steady_clock::now();
