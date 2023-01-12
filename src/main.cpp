@@ -889,11 +889,13 @@ void analyze_alignment_graph_set(int num_variants,
         //get_variants(&g, variants);
 
         // add edges for bipartite graph
+        //cout << i << ": ";
         for(int v: *alignment_graph_to_variants[i]){
-            //cout << ilp_idx << ", " << v << endl;
+            //cout << v << ", ";
             igraph_vector_int_push_back(&edges, ilp_idx);
             igraph_vector_int_push_back(&edges, v);
         }
+        //cout << endl;
         ilp_idx++;
 
     }
@@ -967,9 +969,12 @@ void analyze_alignment_graph_set(int num_variants,
     }
 
     cout << "\nComponent to global variant count:\n" << endl;
+    cout << "[";
     for(int i = 0; i < component_to_global_variable_count.size(); i++){
-        cout << "component_" << i << " has variants: " << component_to_global_variable_count[i] << endl;
+        //cout << "component_" << i << " has variants: " << component_to_global_variable_count[i] << endl;
+        cout << component_to_global_variable_count[i] << ", ";
     }
+    cout << "]" << endl;
 
 
     unordered_map<int, int> component_to_num_edges;
@@ -1028,7 +1033,7 @@ void construct_ILPs(int component,
         igraph_t alignment_graph;
 
         string file_name = graph_directory + "g_" + to_string(alignment_graph_idx);
-        //cout << file_name << endl;
+        cout << file_name << endl;
         read_alignment_graph_from_file(&alignment_graph, file_name);
 
         if(igraph_ecount(&alignment_graph) == 0){
@@ -1232,12 +1237,15 @@ int main(int argc, char** argv){
     vector<int> positions;
     vector<string> substrings;
     read_pos_substring_file(pos_substring_file_name, positions, substrings);
-    int N = positions.size();
+    
+    //int N = positions.size();
+    int N = 9999; 
     
     cout << "\nConstructing alignment graphs...\n" << endl;
     vector<vector<int>*> alignment_graph_to_variants = vector<vector<int>*>(N);
 
     #pragma omp parallel for
+    //int sum_of_sizes = 0;
     for(int i = 0; i < N; i++){     
         if(VERBOSE){
             cout << "Constructing alignment graphs for position: " << positions[i] << endl;
@@ -1264,13 +1272,15 @@ int main(int argc, char** argv){
         string file_name = scratch_directory + "g_" + to_string(i);
         
         write_alignment_graph_to_file(&alignment_graph, file_name);
-        //FILE* file = fopen(file_name.c_str() , "w");
-        //igraph_write_graph_gml(&alignment_graph, file, IGRAPH_WRITE_GML_DEFAULT_SW, NULL, NULL);
-        //fclose(file);
         
+        
+        //sum_of_sizes += igraph_ecount(&alignment_graph);
+
         igraph_destroy(&alignment_graph);
     }
 
+    //cout << "average alignment graph size: " << (float)sum_of_sizes/(float)N << endl;
+    
     positions.clear();
     positions.shrink_to_fit();
     substrings.clear();
@@ -1313,6 +1323,7 @@ int main(int argc, char** argv){
         }
     }
 
+    
     cout << "\nConstructing ILP models from alignment graphs...\n" << endl;
     
     vector<int> solution = vector<int>(num_variants, 1);
@@ -1387,31 +1398,4 @@ int main(int argc, char** argv){
         cout << "No ILPs were timed-out, solution is optimal" << endl;
     }
 
-    /*
-    // needs variation_graph to not be destroyed (currently being destroyed to reduced memory)
-    cout << "\nComputing number of variant edges maintained..." << endl;
-    igraph_es_t es;
-    igraph_eit_t eit;
-    igraph_es_all(&es, IGRAPH_EDGEORDER_ID);
-    igraph_eit_create(&variation_graph, es, &eit);
-    int total_variant_edges = 0;
-    int maintained_variant_edges = 0;
-
-    while(!IGRAPH_EIT_END(eit)){
-
-        int eid = IGRAPH_EIT_GET(eit);
-        int variant = igraph_cattribute_EAN(&variation_graph, "variant", eid);
-        if(variant >= 0 && solution[variant] == 0){
-            maintained_variant_edges++;
-        }else if (variant >= 0 && solution[variant] != 0){
-            total_variant_edges++;
-        }
-
-        IGRAPH_EIT_NEXT(eit);
-    }
-    igraph_es_destroy(&es);
-    igraph_eit_destroy(&eit);
-
-    cout << "Maintained " << maintained_variant_edges << " out of " << total_variant_edges << " variant edges.\n" << endl;  
-    */
 }
