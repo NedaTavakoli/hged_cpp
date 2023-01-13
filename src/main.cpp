@@ -1243,8 +1243,8 @@ int main(int argc, char** argv){
     cout << "\nConstructing alignment graphs...\n" << endl;
     vector<vector<int>*> alignment_graph_to_variants = vector<vector<int>*>(N);
 
-    //int sum_of_sizes = 0;
     #pragma omp parallel for
+    //int sum_of_sizes = 0;
     for(int i = 0; i < N; i++){     
         if(VERBOSE){
             cout << "Constructing alignment graphs for position: " << positions[i] << endl;
@@ -1340,54 +1340,45 @@ int main(int argc, char** argv){
         //cout << "component: " << component << endl; 
         if(component_to_subILPs[component].size() > 0){
 
+            GRBModel model = GRBModel(env);
 
-            if(component_to_variant_count[component] <= delta){
-                for (int j = 0; j < component_to_variant_count[component]; j++) {
-                    //cout << vars[j].get(GRB_StringAttr_VarName) << " = " << vars[j].get(GRB_DoubleAttr_X) << endl;
-                    solution[component_index_pair_to_variant[make_pair(component, j)]] = 1;
-                }
+            construct_ILPs(component,
+                            component_to_subILPs,
+                            global_variable_to_local_idx, 
+                            component_to_variant_count,
+                            model,
+                            delta,
+                            scratch_directory
+                            );
+            //cout << "\n============= ILP model "<< component << " constructed =============\n" << endl;
+            
+            
+            model.getEnv().set(GRB_DoubleParam_TimeLimit, ILP_TIME_LIMIT);
+            auto start = chrono::steady_clock::now();
+            model.optimize();
+            auto stop = chrono::steady_clock::now();
+            auto duration = duration_cast<chrono::seconds>(stop - start);
+            
+            if(duration.count() > .95 * ILP_TIME_LIMIT){
+                cout << "ILP was timed out" << endl;
+                some_ILP_timed_out = true;
+            }
+            //if(VERBOSE){
+            //    cout << "time: " << duration.count() << " milliseconds\n" <<endl;
+            //}
+            
+            //cout << "\n============= ILP models solved =============\n" << endl;
 
-            }else{
-
-                GRBModel model = GRBModel(env);
-
-                construct_ILPs(component,
-                                component_to_subILPs,
-                                global_variable_to_local_idx, 
-                                component_to_variant_count,
-                                model,
-                                delta,
-                                scratch_directory
-                                );
-                //cout << "\n============= ILP model "<< component << " constructed =============\n" << endl;
-                
-                
-                model.getEnv().set(GRB_DoubleParam_TimeLimit, ILP_TIME_LIMIT);
-                auto start = chrono::steady_clock::now();
-                model.optimize();
-                auto stop = chrono::steady_clock::now();
-                auto duration = duration_cast<chrono::seconds>(stop - start);
-                
-                if(duration.count() > .95 * ILP_TIME_LIMIT){
-                    cout << "ILP was timed out" << endl;
-                    some_ILP_timed_out = true;
-                }
-                //if(VERBOSE){
-                //    cout << "time: " << duration.count() << " milliseconds\n" <<endl;
-                //}
-                
-                //cout << "\n============= ILP models solved =============\n" << endl;
-
-                GRBVar* vars = NULL;
-                vars = model.getVars();
-                //cout << "ILP_" << component << " local assignments: " << endl;
-                //cout << "variable count: " << component_to_variant_count[component] << endl;
-                for (int j = 0; j < component_to_variant_count[component]; j++) {
-                    //cout << vars[j].get(GRB_StringAttr_VarName) << " = " << vars[j].get(GRB_DoubleAttr_X) << endl;
-                    solution[component_index_pair_to_variant[make_pair(component, j)]] = vars[j].get(GRB_DoubleAttr_X);
-                }
+            GRBVar* vars = NULL;
+            vars = model.getVars();
+            //cout << "ILP_" << component << " local assignments: " << endl;
+            //cout << "variable count: " << component_to_variant_count[component] << endl;
+            for (int j = 0; j < component_to_variant_count[component]; j++) {
+                //cout << vars[j].get(GRB_StringAttr_VarName) << " = " << vars[j].get(GRB_DoubleAttr_X) << endl;
+                solution[component_index_pair_to_variant[make_pair(component, j)]] = vars[j].get(GRB_DoubleAttr_X);
             }
         }
+
     }
         
     int sum = 0;
@@ -1408,4 +1399,6 @@ int main(int argc, char** argv){
     }else{
         cout << "No ILPs were timed-out, solution is optimal" << endl;
     }
+    
+
 }
