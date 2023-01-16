@@ -968,6 +968,7 @@ void analyze_alignment_graph_set(int num_variants,
         }
     }
 
+    /*
     cout << "\nComponent to global variant count:\n" << endl;
     cout << "[";
     for(int i = 0; i < component_to_global_variable_count.size(); i++){
@@ -975,7 +976,7 @@ void analyze_alignment_graph_set(int num_variants,
         cout << component_to_global_variable_count[i] << ", ";
     }
     cout << "]" << endl;
-
+    */
 
     unordered_map<int, int> component_to_num_edges;
     for(int i = 0; i < alignment_graph_to_variants.size(); i++){
@@ -1005,7 +1006,9 @@ void construct_ILPs(int component,
                     vector<int>& component_to_global_variable_count,
                     GRBModel& model,
                     int delta,
-                    string graph_directory
+                    string graph_directory,
+                    vector<igraph_t*>& alignment_graphs,
+                    bool use_files
                     ){
 
 
@@ -1032,9 +1035,13 @@ void construct_ILPs(int component,
 
         igraph_t alignment_graph;
 
-        string file_name = graph_directory + "g_" + to_string(alignment_graph_idx);
-        //cout << file_name << endl;
-        read_alignment_graph_from_file(&alignment_graph, file_name);
+        if(use_files == 1){
+            string file_name = graph_directory + "g_" + to_string(alignment_graph_idx);
+            //cout << file_name << endl;
+            read_alignment_graph_from_file(&alignment_graph, file_name);
+        }else{
+            alignment_graph = *alignment_graphs[alignment_graph_idx];
+        }
 
         if(igraph_ecount(&alignment_graph) == 0){
             cout << "no edges in alignment graph." << endl;
@@ -1207,7 +1214,7 @@ int main(int argc, char** argv){
     env.set("OutputFlag", "0");
     env.start();
 
-    if(argc < 5){
+    if(argc < 8){
         cout << "Wrong number of arguments provided" << endl;
         return 0;
     }
@@ -1217,6 +1224,7 @@ int main(int argc, char** argv){
     string sol_directory = argv[4];
     int alpha = atoi(argv[5]);
     int delta = atoi(argv[6]);
+    int use_files = atoi(argv[7]);
 
     igraph_set_attribute_table(&igraph_cattribute_table);
 
@@ -1236,6 +1244,7 @@ int main(int argc, char** argv){
     // read locations and strings
     vector<int> positions;
     vector<string> substrings;
+
     read_pos_substring_file(pos_substring_file_name, positions, substrings);
     
     int N = positions.size();
@@ -1243,8 +1252,13 @@ int main(int argc, char** argv){
     cout << "\nConstructing alignment graphs...\n" << endl;
     vector<vector<int>*> alignment_graph_to_variants = vector<vector<int>*>(N);
 
+
+    vector<igraph_t*> alignment_graphs;
+    for(int i = 0; i < N; i++){ 
+        alignment_graphs.push_back(new igraph_t); 
+    }
+
     #pragma omp parallel for
-    //int sum_of_sizes = 0;
     for(int i = 0; i < N; i++){     
         if(VERBOSE){
             cout << "Constructing alignment graphs for position: " << positions[i] << endl;
@@ -1267,10 +1281,12 @@ int main(int argc, char** argv){
         igraph_cattribute_GAN_set(&alignment_graph, "position", positions[i]);
         igraph_cattribute_GAS_set(&alignment_graph, "substring", substrings[i].c_str());
         
-
-        string file_name = scratch_directory + "g_" + to_string(i);
-        
-        write_alignment_graph_to_file(&alignment_graph, file_name);
+        if(use_files == 1){
+            string file_name = scratch_directory + "g_" + to_string(i);        
+            write_alignment_graph_to_file(&alignment_graph, file_name);
+        }else{
+            igraph_copy(alignment_graphs[i], &alignment_graph);
+        }
         
         
         //sum_of_sizes += igraph_ecount(&alignment_graph);
@@ -1332,10 +1348,13 @@ int main(int argc, char** argv){
 
     #pragma omp parallel for
     for(int component = 0; component < num_components; component++){
-
+        
         if(component % PRINT_FACTOR == 0){
             cout << "Solving ILP_" << component << " out of " <<  num_components << " (prints mod " << PRINT_FACTOR << ")" <<endl;
         }
+        
+        //cout << "Solving ILP_" << component << " out of " <<  num_components << endl;
+
 
         //cout << "component: " << component << endl; 
         if(component_to_subILPs[component].size() > 0){
@@ -1348,7 +1367,9 @@ int main(int argc, char** argv){
                             component_to_variant_count,
                             model,
                             delta,
-                            scratch_directory
+                            scratch_directory,
+                            alignment_graphs,
+                            use_files
                             );
             //cout << "\n============= ILP model "<< component << " constructed =============\n" << endl;
             
