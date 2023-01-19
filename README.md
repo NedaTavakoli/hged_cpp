@@ -5,7 +5,7 @@
 - [samtools](https://vcftools.github.io/)
 - [bcftools](https://vcftools.github.io/)
 - [Gurobi](https://www.gurobi.com)
-- [iGraph](https://github.com/igraph/igraph)
+- [igraph](https://github.com/igraph/igraph)
 
 ![Workflow](figs/workflow.png)
 
