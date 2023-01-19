@@ -6,6 +6,7 @@
 - [bcftools](https://vcftools.github.io/)
 - [Gurobi](https://www.gurobi.com)
 - [igraph](https://github.com/igraph/igraph)
+- [OpenMP](https://curc.readthedocs.io/en/latest/programming/OpenMP-C.html)
 
 ![Workflow](figs/workflow.png)
 
