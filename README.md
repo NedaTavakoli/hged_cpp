@@ -1,7 +1,8 @@
 ## Preserving Read Mappability with the Minimal Number of Variants
 
 ## Dependencies
--  C++ 20
+- gcc (with C++20 support)
+- Boost Graph Library
 - [samtools](https://vcftools.github.io/)
 - [bcftools](https://vcftools.github.io/)
 - [Gurobi](https://www.gurobi.com)
