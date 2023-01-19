@@ -46,7 +46,7 @@ OPTIONS
         <id>           chromosome id (e.g., 22), make it consistent with vcf file
         <file1>        compressed vcf file (something.vcf.gz)
         <file2>        reference genome fasta file (something.fa)
-        <file3>        edge graph file for SNPs and INDELs (something.txt)
+        <file3>        linear variation graph file for SNPs and INDELs (something.txt)
         <file4>        positon haplotype substrings file (something.txt)
         <graph_dir>    directory to save graph files (use mkdir graph_dir)
         <ILP_dir>      directory to save ILP files (use mkdir ILP_dir)
