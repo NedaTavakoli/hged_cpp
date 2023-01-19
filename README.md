@@ -91,5 +91,6 @@ The algorithm has the following steps:
         |   |___model = create_sub_ILP(model, G_a_pruned, start_v, end_v, delta, index_offset, global_var)  # create sub ILPS
  ```     
   
+![Workflow](figs/workflow.png)
 
 
