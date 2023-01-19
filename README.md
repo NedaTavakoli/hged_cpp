@@ -1,11 +1,11 @@
 ## Haplotype_aware Variation Selection in Genome Graphs under Edit Distance
 
 ## Dependencies
-- C++ 20
+-  C++ 20
 - [samtools](https://vcftools.github.io/)
 - [bcftools](https://vcftools.github.io/)
 - [Gurobi](https://www.gurobi.com)
-- [iGraph](https://github.com/igraph/igraph/releases/download/0.10.2)
+- [iGraph](https://github.com/igraph/igraph)
 
 
 ## Installation
@@ -20,16 +20,13 @@ The overall workflow is:
 ```sh
 git clone https://github.com/NedaTavakoli/hged_cpp
 cd hged
-project_dir=$(pwd)        #project top-level directory
-chr_id=22                 #* change this numbers according to your needs
-alpha=75                 #* change this numbers according to your needs
-delta=3
+project_dir=$(pwd)          # project top-level directory
+chr_id=22                   #* change this numbers according to your needs
 # download data and softwares
 chmod +x dependencies.sh
 ./dependencies.sh ${chr_id} 
 make
 cd build
-
 ```
 
 After a successful compilation, expect executables named as `main_ilp` and `data_wrangler` in a directory named `build`.
@@ -38,18 +35,23 @@ After a successful compilation, expect executables named as `main_ilp` and `data
 All the executables implement a variety of algorithms to achieve variant graph size reduction, but they all have a similar interface.
 ```
 SYNOPSIS
-
-        main    -a <alpha> -d <delta>  -chr <id> -vcf <file1>  -fa <file2>  -pos <file3> [-prefix <file4>]
+      
+        data_wrangler  -a <alpha> -d <delta>  -chr <id> -vcf <file1>  -fa <file2> 
+        main_ilp  <file2> <file3> <graph_dir> <ILP_dir> <alpha> <delta> <I/O> 
 
 
 OPTIONS
-        <alpha>     path length in variation graph (e.g., 500)
-        <delta>     differences allowed (e.g., 10)
-        <id>        chromosome id (e.g., 22), make it consistent with vcf file
-        <file1>     compressed vcf file (something.vcf.gz)
-        <file2>     reference genome fasta file (something.fa)
-        <file3>     variant position file for SNPs and INDELs (something.txt)
-        <file4>     filename to optionally save input and output variants
+        <alpha>        path length in variation graph (e.g., 500)
+        <delta>        differences allowed (e.g., 10)
+        <id>           chromosome id (e.g., 22), make it consistent with vcf file
+        <file1>        compressed vcf file (something.vcf.gz)
+        <file2>        reference genome fasta file (something.fa)
+        <file3>        edge graph file for SNPs and INDELs (something.txt)
+        <file4>        positon haplotype substrings (something.txt)
+        <graph_dir>    positon haplotype substrings (something.txt)
+        <ILP_dir>      positon haplotype substrings (something.txt)
+        <I/O>          positon haplotype substrings (something.txt)
+
 ```
 
 This repository is used to solve variant selection in genome graphs under edit disatnce
