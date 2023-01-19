@@ -7,6 +7,7 @@
 - [Gurobi](https://www.gurobi.com)
 - [iGraph](https://github.com/igraph/igraph)
 
+![Workflow](figs/workflow.png)
 
 ## Installation
 The above dependencies can be handled by running script `dependencies.sh`.
@@ -47,9 +48,9 @@ OPTIONS
         <file1>        compressed vcf file (something.vcf.gz)
         <file2>        reference genome fasta file (something.fa)
         <file3>        edge graph file for SNPs and INDELs (something.txt)
-        <file4>        positon haplotype substrings (something.txt)
-        <graph_dir>    positon haplotype substrings (something.txt)
-        <ILP_dir>      positon haplotype substrings (something.txt)
+        <file4>        positon haplotype substrings file (something.txt)
+        <graph_dir>    directory to save graph files (use mkdir graph_dir)
+        <ILP_dir>      directory to save ILP files (use mkdir ILP_dir)
         <I/O>          positon haplotype substrings (something.txt)
 
 ```
@@ -64,8 +65,8 @@ The project has the following folder structure:
 ```
 hged
 |___src  
-    |___get_edges_chr.py # to construct edges of variation graph, used in src/construct_graph.sh
-    |___main.py # code to construct ILPs 
+    |___data_wrangler.cpp           # to construct <file1> and <file2>
+    |___main.py                     # code to construct ILPs and solve the problem
 ...
 ```
 
@@ -91,6 +92,6 @@ The algorithm has the following steps:
         |   |___model = create_sub_ILP(model, G_a_pruned, start_v, end_v, delta, index_offset, global_var)  # create sub ILPS
  ```     
   
-![Workflow](figs/workflow.png)
+
 
 
