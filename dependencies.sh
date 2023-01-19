@@ -9,7 +9,7 @@ then
     echo "$0: Too many arguments: $@"
     exit 1
 else
-    echo "Construct edge-labeled varion graph ( args: chr id, length of substrings"
+    echo "Install software dependencies and download Genome data and VCF files ( args: chr id)"
     echo "==========================="
     echo "Number of arguments.: $#"
     echo "List of arguments...: $@"
@@ -27,7 +27,7 @@ DATA=$(pwd)
 REFERENCE=hs37d5.fa
 rm -f ${REFERENCE} ${REFERENCE}.gz
 wget ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/reference/phase2_reference_assembly_sequence/${REFERENCE}.gz
-gunzip ${REFERENCE}
+gunzip -d ${REFERENCE}
 
 # Get the phasings for chromosomes 
 PREFIX=ALL.chr
@@ -101,14 +101,23 @@ wget  https://packages.gurobi.com/9.1/gurobi9.1.0_linux64.tar.gz
 tar xzf gurobi9.1.0_linux64.tar.gz
 cd gurobi910/linux64/
 make -j -C gurobi910/linux64/src/build #re-compile gurobi cpp files using user's c++ compiler
-cp gurobi910/linux64/src/build/libgurobi_c++.a gurobi910/linux64/lib
-# GUROBI_HOME=$(pwd)
-# python setup.py install #re-compile gurobi python files using user's python
-# cp gurobi910/linux64/src/build/python${ver}_utf32 gurobi910/linux64/lib
-# export PYTHONPATH=$GUROBI_HOME/lib/python${ver}_utf32:$PYTHONPATH
-# gurobi=${software_dir}/gurobi910/linux64/lib/python${ver}_utf32
+cp gurobi910/linux64/src/build/libgurobi_c++.a gurobi910/linux64/lib  
 rm -f "gurobi9.1.0_linux64.tar.gz"
 echo "gurobi download and compilation finished"
+
+#get igraph0.10.2
+echo "downloading igraph"
+cd ${software_dir}
+wget https://github.com/igraph/igraph/releases/download/0.10.2/igraph-0.10.2.tar.gz
+tar -xvf igraph-0.10.2.tar.gz
+cd igraph-0.10.2/
+mkdir build3
+cd build3
+cmake  CMAKE_INSTALL_PREFIX=${software_dir}/igraph-0.10.2/build3 ..    # on my local computer: cmake  CMAKE_INSTALL_PREFIX=/Users/Amir/Documents/Neda_Documents/Research/github/hged_cpp/build/igraph-0.10.3/build3 ..
+cmake --build .
+cmake --build . --target check
+cmake  —install CMAKE_INSTALL_PREFIX=${software_dir}/igraph-0.10.2/build3 .  # on my local computer: project_dir=/Users/Amir/Documents/Neda_Documents/Research/github/hged_cpp/build/igraph-0.10.3/build3 
+
 
 cd ${DATA}
 $bcftools view -r 22:16050075-16654125 -Oz data/chr22.vcf.gz > data/chr22_10k.vcf.gz
