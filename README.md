@@ -40,7 +40,6 @@ SYNOPSIS
         data_wrangler  -a <alpha> -d <delta>  -chr <id> -vcf <file1>  -fa <file2> 
         main_ilp  <file2> <file3> <graph_dir> <ILP_dir> <alpha> <delta> <I/O> 
 
-
 OPTIONS
         <alpha>        path length in variation graph (e.g., 500)
         <delta>        differences allowed (e.g., 10)
