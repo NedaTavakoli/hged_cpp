@@ -1,4 +1,4 @@
-## Haplotype_aware Variation Selection in Genome Graphs under Edit Distance
+## Preserving Read Mappability with the Minimal Number of Variants
 
 ## Dependencies
 -  C++ 20
@@ -51,12 +51,12 @@ OPTIONS
         <file4>        positon haplotype substrings file (something.txt)
         <graph_dir>    directory to save graph files (use mkdir graph_dir)
         <ILP_dir>      directory to save ILP files (use mkdir ILP_dir)
-        <I/O>          positon haplotype substrings (something.txt)
+        <I/O>          A binary number represent to save graph and ILPs on disk (0: don't save or 1: save)
 
 ```
 
-This repository is used to solve variant selection in genome graphs under edit disatnce
-in other words for a given complete variation graph for each chromosome, it creates a reduced variation graph in which 
+This repository is used to Preserving Read Mappability with the Minimal Number of Variants in genome variation graphs
+in other words for a given complete variation graph of each chromosome, it creates a reduced variation graph in which 
 some variants are removed subject to some constraints. The constraints are for every substring of length 
 alpha observed in haplotypes, the reduced varaition graph guarantees to preserve those substrings with
 at most delta errors (i.e., edit distance of delta among alpha-long substrings of haplotypes in complete variation graph with those of reduced variation graph).
