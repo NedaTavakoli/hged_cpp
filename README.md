@@ -1,10 +1,11 @@
 ## Haplotype_aware Variation Selection in Genome Graphs under Edit Distance
 
 ## Dependencies
-- Python 3
+- C++ 20
 - [samtools](https://vcftools.github.io/)
 - [bcftools](https://vcftools.github.io/)
 - [Gurobi](https://www.gurobi.com)
+- [iGraph](https://github.com/igraph/igraph/releases/download/0.10.2)
 
 
 ## Installation
@@ -17,29 +18,21 @@ Add your licence key by using build/gurobi910/linux64/bin/grbgetkey tool"
 The overall workflow is:
 
 ```sh
-git clone https://github.com/NedaTavakoli/hged
+git clone https://github.com/NedaTavakoli/hged_cpp
 cd hged
 project_dir=$(pwd)        #project top-level directory
 chr_id=22                 #* change this numbers according to your needs
 alpha=75                 #* change this numbers according to your needs
 delta=3
-start_pos=16050075        #* change this numbers according to your needs; first variant position (here is for chr22)
-end_pos=16654125          #* change this numbers according to your needs; last variant position (here is for chr22)
-total_variants=10000      #* change this numbers according to your needs; total number of variants as your need
 # download data and softwares
 chmod +x dependencies.sh
 ./dependencies.sh ${chr_id} 
-python src/data_wrangler.py data/hs37d5.fa \
-data/chr${chr_id}_snps_indels.vcf.gz ${chr_id} ${start_pos} ${end_pos} ${total_variants} \
-150 graph_chr${chr_id}_${total_variants}_${alpha}.txt pos_substrings_chr${chr_id}_${total_variants}_${alpha}.txt greedy_cost_chr${chr_id}_${total_variants}_${alpha}.txt 
-python src/main.py graph_chr${chr_id}_${total_variants}_${alpha}.txt pos_substrings_chr${chr_id}_${total_variants}_${alpha}.txt ${alpha} ${delta}
-# [optional] to run greedy
-python src/greedy.py graph_chr${chr_id}_${total_variants}_${alpha}.txt pos_substrings_chr${chr_id}_${total_variants}_${alpha}.txt ${alpha} ${delta}
-# To analyze solutions
-python src/solution_analyzer.py graph_chr${chr_id}_${total_variants}_${alpha}.txt ILP_sol_vectors/ILP_sol_${alpha}_${delta}.txt retained_variants_ed_ILP_${alpha}_${delta}.txt
+make
+cd build
+
 ```
 
-After a successful compilation, expect executables named as `ilp_snp_indels` in a directory named `build`.
+After a successful compilation, expect executables named as `main_ilp` and `data_wrangler` in a directory named `build`.
 
 ## Usage
 All the executables implement a variety of algorithms to achieve variant graph size reduction, but they all have a similar interface.
