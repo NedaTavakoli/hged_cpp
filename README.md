@@ -4,7 +4,7 @@
 - gcc (with C++20 support)
 - Boost Graph Library
 - [samtools](https://vcftools.github.io/)
-- [bcftools](https://vcftools.github.io/)
+- [bcftools](https://vcftools.github.io/](https://samtools.github.io/bcftools/)
 - [Gurobi](https://www.gurobi.com)
 - [igraph](https://github.com/igraph/igraph)
 - [OpenMP](https://curc.readthedocs.io/en/latest/programming/OpenMP-C.html)
