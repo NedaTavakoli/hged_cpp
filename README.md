@@ -1,8 +1,8 @@
 ## Preserving Read Mappability with the Minimum Number of Variants
 
-This repository is used to Preserving Read Mappability with the Minimum Number of Variants in genome variation graphs
-in other words for a given complete variation graph of each chromosome, it creates a reduced variation graph in which 
-some variants are removed subject to some constraints. The constraints are for every substring of length 
+This repository is used to Preserving Read Mappability with the Minimum Number of Variants in genome variation graphs.
+In other words, for a given complete variation graph of each chromosome, it creates a reduced variation graph in which 
+some variants are removed subject to some constraints while preserving read mappability. The constraints are for every substring of length 
 alpha observed in haplotypes, the reduced varaition graph guarantees to preserve those substrings with
 at most delta errors (i.e., edit distance of delta among alpha-long substrings of haplotypes in complete variation graph with those of reduced variation graph).
 
